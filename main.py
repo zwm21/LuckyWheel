@@ -21,7 +21,12 @@ SECTOR_COLORS = [
     QColor("#85C1E9"), QColor("#F8C471"), QColor("#82E0AA"),
     QColor("#F1948A"), QColor("#85929E"), QColor("#AED6F1"),
     QColor("#E8DAEF"), QColor("#A3E4D7"), QColor("#FAD7A0"),
-    QColor("#D5F5E3"), QColor("#F9E79F"), QColor("#ABEBC6")
+    QColor("#D5F5E3"), QColor("#F9E79F"), QColor("#ABEBC6"),
+    # 新增颜色
+    QColor("#E74C3C"), QColor("#3498DB"), QColor("#2ECC71"),
+    QColor("#F39C12"), QColor("#9B59B6"), QColor("#1ABC9C"),
+    QColor("#E67E22"), QColor("#C0392B"),
+    QColor("#16A085"), QColor("#8E44AD"), QColor("#D35400"),
 ]
 
 def loadEmbeddedFont(font_filename):
@@ -209,7 +214,7 @@ class WheelWidget(QWidget):
 
             # 阴影 + 文字（无背景）
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
-            text_color = Qt.black if color.lightness() > 110 else Qt.white
+            text_color = Qt.black if color.lightness() > 50 else Qt.white
             if self.shadow_enabled:
                 painter.setPen(QColor(0, 0, 0, 120))  # 阴影
                 painter.drawText(rect.translated(1, 1), Qt.AlignCenter, item)
@@ -291,6 +296,9 @@ class MainWindow(QMainWindow):
         print("使用字体:", self.font_family)  # 调试用，可删除
 
         self.loadData()
+
+        random.shuffle(SECTOR_COLORS)
+
         self.initUI()
         self.updateWheelFromCurrentGroup()
 
