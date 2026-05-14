@@ -6,7 +6,7 @@ import os
 
 from PyQt5.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
                           QPropertyAnimation, QEasingCurve)
-from PyQt5.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF, QPainterPath
+from PyQt5.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF, QPainterPath, QFontDatabase
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QListWidget, QListWidgetItem, QComboBox, QFileDialog,
@@ -24,6 +24,21 @@ SECTOR_COLORS = [
     QColor("#D5F5E3"), QColor("#F9E79F"), QColor("#ABEBC6")
 ]
 
+def loadEmbeddedFont(font_filename):
+    """加载内嵌字体并返回族名，失败返回 None"""
+    # PyInstaller 打包后解压路径
+    if getattr(sys, 'frozen', False):
+        base_dir = sys._MEIPASS
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    font_path = os.path.join(base_dir, font_filename)
+    if os.path.exists(font_path):
+        font_id = QFontDatabase.addApplicationFont(font_path)
+        if font_id != -1:
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                return families[0]  # 返回族名
+    return None
 
 class WheelWidget(QWidget):
     """转盘绘制与旋转逻辑"""
@@ -266,6 +281,14 @@ class MainWindow(QMainWindow):
         else:
             app_dir = os.path.dirname(os.path.abspath(__file__))
         self.data_file = os.path.join(app_dir, "wheel_data.json")
+
+        # 优先使用内嵌字体，失败则使用默认后备
+        embedded_font = loadEmbeddedFont("HYWenHei-65W.ttf")  # 替换为你的字体文件名
+        if embedded_font:
+            self.font_family = embedded_font
+        else:
+            self.font_family = "Microsoft YaHei"  # 后备字体
+        print("使用字体:", self.font_family)  # 调试用，可删除
 
         self.loadData()
         self.initUI()

@@ -24,7 +24,7 @@ if %errorlevel% neq 0 (
 :: if exist *.spec del /q *.spec
 
 echo [*] 开始打包，请稍候...
-pyinstaller --onefile --windowed --name="LuckyWheel" main.py
+pyinstaller --onefile --windowed --name="LuckyWheel" --add-data "HYWenHei-65W.ttf;." main.py
 
 if %errorlevel% equ 0 (
     echo.
