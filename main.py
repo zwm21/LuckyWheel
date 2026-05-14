@@ -6,7 +6,7 @@ import os
 
 from PyQt5.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
                           QPropertyAnimation, QEasingCurve)
-from PyQt5.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF, QPainterPath, QFontDatabase
+from PyQt5.QtGui import QFontMetrics, QPainter, QColor, QFont, QPen, QBrush, QPixmap, QPolygonF, QPainterPath, QFontDatabase
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QListWidget, QListWidgetItem, QComboBox, QFileDialog,
@@ -63,17 +63,115 @@ class WheelWidget(QWidget):
         self.result_text = ""
         self.font_family = "汉仪文黑-65W"   # 默认字体家族
         self.shadow_enabled = True   # 默认转盘字体开启阴影
+        self.cached_pixmap = None   # 离屏转盘图像（不含旋转）
+        self.cached_size = None     # 上次生成缓存时的 widget 尺寸
 
         self.setMinimumSize(350, 350)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
+    def renderCache(self):
+        """将当前所有项目绘制到一个固定 pixmap 上（不包含旋转）"""
+        if not self.items:
+            self.cached_pixmap = None
+            self.cached_size = None
+            return
+    
+        side = min(self.width(), self.height())
+        wheel_diameter = side * 0.88
+        radius = wheel_diameter / 2.0
+        center = QPointF(side / 2.0, side / 2.0)
+    
+        # 创建正方形画布，避免圆形被拉伸
+        pixmap = QPixmap(side, side)
+        pixmap.fill(Qt.transparent)
+    
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+    
+        # ---------- 绘制扇形（无旋转） ----------
+        num = len(self.items)
+        sector_span = 360.0 / num
+    
+        painter.translate(center)
+        for i in range(num):
+            start_angle = i * sector_span
+            span_angle = sector_span
+            color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
+            painter.setBrush(QBrush(color))
+            painter.setPen(QPen(Qt.white, 2))
+            path = QPainterPath()
+            path.moveTo(0, 0)
+            path.arcTo(QRectF(-radius, -radius, radius * 2, radius * 2),
+                       start_angle, span_angle)
+            path.lineTo(0, 0)
+            painter.drawPath(path)
+        painter.resetTransform()
+    
+        # ---------- 绘制文字（完全沿用原版逻辑，仅将全局坐标改为未旋转下的固定位置） ----------
+        text_radius = radius * 0.62
+        num = len(self.items)
+        sector_span = 360.0 / num
+
+        for i, item in enumerate(self.items):
+            # 扇区中线角度（未旋转）
+            mid_angle_deg = i * sector_span + sector_span / 2.0
+            mid_angle_rad = math.radians(mid_angle_deg)
+
+            lx = text_radius * math.cos(mid_angle_rad)
+            ly = text_radius * math.sin(mid_angle_rad)
+
+            # 动态字体大小（与原版完全相同）
+            font = QFont(self.font_family)
+            font.setBold(True)
+            init_size = max(10, int(radius * 0.18))
+            font.setPixelSize(init_size)
+            painter.setFont(font)
+            fm = painter.fontMetrics()
+            max_w = (radius - text_radius) * 0.9
+            max_h = text_radius * math.radians(sector_span) * 0.7
+            while fm.horizontalAdvance(item) > max_w or fm.height() > max_h:
+                if font.pixelSize() <= 8:
+                    break
+                font.setPixelSize(font.pixelSize() - 1)
+                painter.setFont(font)
+                fm = painter.fontMetrics()
+
+            text_w = fm.horizontalAdvance(item)
+            text_h = fm.height()
+
+            # 文字在 pixmap 中的位置（center 是 pixmap 中心，与 widget 中心相同计算方式）
+            painter.save()
+            painter.translate(center.x() + lx, center.y() + ly)
+            painter.rotate(mid_angle_deg)   # 注意此处直接使用 mid_angle_deg，不再加 rotation
+
+            rect = QRectF(-text_w / 2, -text_h / 2, text_w, text_h)
+
+            # 阴影与主体文字（阈值与原版相同的 > 50）
+            color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
+            text_color = Qt.black if color.lightness() > 50 else Qt.white
+            if self.shadow_enabled:
+                painter.setPen(QColor(0, 0, 0, 120))
+                painter.drawText(rect.translated(1, 1), Qt.AlignCenter, item)
+            painter.setPen(text_color)
+            painter.drawText(rect, Qt.AlignCenter, item)
+
+            painter.restore()
+    
+        painter.end()
+        self.cached_pixmap = pixmap
+        self.cached_size = side
+
     def setShadowEnabled(self, enabled):
         self.shadow_enabled = enabled
+        self.cached_pixmap = None
+        self.cached_size = None
         self.update()
 
     def setFontFamily(self, family):
         """设置转盘文字的字体家族"""
         self.font_family = family
+        self.cached_pixmap = None
+        self.cached_size = None
         self.update()
 
     def setItems(self, items):
@@ -82,6 +180,14 @@ class WheelWidget(QWidget):
         self.rotation = 0.0
         self.angular_velocity = 0.0
         self.spinning = False
+        self.cached_pixmap = None
+        self.cached_size = None
+        self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.cached_pixmap = None
+        self.cached_size = None
         self.update()
 
     def startSpin(self, initial_velocity=None):
@@ -127,103 +233,38 @@ class WheelWidget(QWidget):
         self.spinFinished.emit(sector_index, self.result_text)
 
     def paintEvent(self, event):
-        """绘制转盘——独立计算文字全局坐标，避免嵌套变换导致的裁剪"""
+        """使用离屏缓存绘制，大幅提升大量项目时的旋转性能"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-
         side = min(self.width(), self.height())
-        wheel_diameter = side * 0.88
-        radius = wheel_diameter / 2.0
-        center = QPointF(self.width() / 2.0, self.height() / 2.0)
-
-        if len(self.items) == 0:
+    
+        if not self.items:
             painter.setPen(QPen(Qt.black, 1))
-            painter.drawText(QRectF(center.x() - 60, center.y() - 10, 120, 20),
-                             Qt.AlignCenter, "请添加项目")
+            painter.drawText(self.rect(), Qt.AlignCenter, "请添加项目")
             return
-
-        num = len(self.items)
-        sector_span = 360.0 / num
-        rot_rad = math.radians(self.rotation)
-
-        # ---------- 第 1 步：绘制扇形 ----------
+    
+        # 需要重建缓存的情况
+        if self.cached_pixmap is None or self.cached_size != side:
+            self.renderCache()
+    
+        if self.cached_pixmap is None:
+            return
+    
+        # 在 widget 中心贴上旋转后的缓存图
+        center = QPointF(self.width() / 2.0, self.height() / 2.0)
+        # 将缓存图中心对齐到 widget 中心
+        pixmap_center = QPointF(side / 2.0, side / 2.0)
+    
         painter.save()
         painter.translate(center)
         painter.rotate(self.rotation)
-
-        for i in range(num):
-            start_angle = i * sector_span
-            span_angle = sector_span
-
-            color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
-            painter.setBrush(QBrush(color))
-            painter.setPen(QPen(Qt.white, 2))
-            path = QPainterPath()
-            path.moveTo(0, 0)
-            path.arcTo(QRectF(-radius, -radius, radius * 2, radius * 2),
-                       start_angle, span_angle)
-            path.lineTo(0, 0)
-            painter.drawPath(path)
-
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.drawPixmap(-pixmap_center, self.cached_pixmap)
         painter.restore()
-
-        # ---------- 第 2 步：绘制文字 ----------
-        text_radius = radius * 0.62
-
-        for i, item in enumerate(self.items):
-            # 扇区中线在未旋转转盘中的角度
-            mid_angle_deg = i * sector_span + sector_span / 2.0
-            mid_angle_rad = math.radians(mid_angle_deg)
-
-            lx = text_radius * math.cos(mid_angle_rad)
-            ly = text_radius * math.sin(mid_angle_rad)
-
-            cos_r = math.cos(rot_rad)
-            sin_r = math.sin(rot_rad)
-            global_x = center.x() + (lx * cos_r - ly * sin_r)
-            global_y = center.y() + (lx * sin_r + ly * cos_r)
-
-            final_angle_deg = mid_angle_deg + self.rotation
-
-            # 动态字体大小，但使用用户选择的字体家族
-            font = QFont(self.font_family)
-            font.setBold(True)
-            init_size = max(10, int(radius * 0.18))
-            font.setPixelSize(init_size)
-            painter.setFont(font)
-            fm = painter.fontMetrics()
-            # 允许的最大宽度和高度（基于到转盘边缘的距离和 widget 边界）
-            max_w = (radius - text_radius) * 0.9
-            max_h = text_radius * math.radians(sector_span) * 0.7
-            while fm.horizontalAdvance(item) > max_w or fm.height() > max_h:
-                if font.pixelSize() <= 8:
-                    break
-                font.setPixelSize(font.pixelSize() - 1)
-                painter.setFont(font)
-                fm = painter.fontMetrics()
-
-            text_w = fm.horizontalAdvance(item)
-            text_h = fm.height()
-
-            painter.save()
-            # 移动到全局位置，并旋转到径向朝外
-            painter.translate(global_x, global_y)
-            painter.rotate(final_angle_deg)
-
-            rect = QRectF(-text_w / 2, -text_h / 2, text_w, text_h)
-
-            # 阴影 + 文字（无背景）
-            color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
-            text_color = Qt.black if color.lightness() > 50 else Qt.white
-            if self.shadow_enabled:
-                painter.setPen(QColor(0, 0, 0, 120))  # 阴影
-                painter.drawText(rect.translated(1, 1), Qt.AlignCenter, item)
-            painter.setPen(text_color)
-            painter.drawText(rect, Qt.AlignCenter, item)
-
-            painter.restore()
-
-        # ---------- 第 3 步：固定元素（中心圆、指针） ----------
+    
+        # ---------- 绘制固定的中心装饰和指针 ----------
+        radius = side * 0.44  # 简便计算，也可用 wheel_diameter/2
+        # 中心圆
         painter.save()
         painter.translate(center)
         painter.setBrush(QBrush(QColor("#333333")))
@@ -239,10 +280,13 @@ class WheelWidget(QWidget):
         painter.drawText(QRectF(-radius * 0.1, -radius * 0.1, radius * 0.2, radius * 0.2),
                          Qt.AlignCenter, "GO")
         painter.restore()
-
+    
         # 指针
         painter.save()
-        pointer_tip = QPointF(center.x(), center.y() - radius + 5)
+        pointer_tip = QPointF(center.x(), center.y() - radius * 0.88 + 5)  # radius 是转盘半径
+        # 注意 radius 应该用 wheel_diameter/2 更准，需重新计算
+        wheel_radius = min(self.width(), self.height()) * 0.44
+        pointer_tip = QPointF(center.x(), center.y() - wheel_radius + 5)
         pointer_size = 20
         pointer = QPolygonF([
             pointer_tip,
