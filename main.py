@@ -209,7 +209,7 @@ class WheelWidget(QWidget):
 
             # 阴影 + 文字（无背景）
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
-            text_color = Qt.black if color.lightness() > 150 else Qt.white
+            text_color = Qt.black if color.lightness() > 110 else Qt.white
             if self.shadow_enabled:
                 painter.setPen(QColor(0, 0, 0, 120))  # 阴影
                 painter.drawText(rect.translated(1, 1), Qt.AlignCenter, item)
