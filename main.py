@@ -96,7 +96,6 @@ class WheelWidget(QWidget):
         self.spinFinished.emit(sector_index, self.result_text)
 
     def paintEvent(self, event):
-        """绘制转盘（修复扇形弧线单位错误）"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
     
@@ -112,23 +111,22 @@ class WheelWidget(QWidget):
             return
     
         num = len(self.items)
-        sector_span = 360.0 / num     # 每个扇区的角度（度）
+        sector_span = 360.0 / num
     
-        # ---- 绘制可旋转的转盘主体（关键修改：arcTo 使用度，不乘16）----
+        # 转盘主体
         painter.save()
         painter.translate(center)
         painter.rotate(self.rotation)
     
         for i, item in enumerate(self.items):
-            start_angle = i * sector_span       # 角度，度
-            span_angle = sector_span            # 跨度，度
+            start_angle = i * sector_span
+            span_angle = sector_span
     
-            # 扇区颜色
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
             painter.setBrush(QBrush(color))
             painter.setPen(QPen(Qt.white, 2))
     
-            # 扇形路径
+            # 画扇形
             path = QPainterPath()
             path.moveTo(0, 0)
             path.arcTo(QRectF(-radius, -radius, radius * 2, radius * 2),
@@ -136,42 +134,62 @@ class WheelWidget(QWidget):
             path.lineTo(0, 0)
             painter.drawPath(path)
     
-            # ---- 绘制文字（沿径向居中） ----
-            mid_angle_deg = i * sector_span + sector_span / 2.0
+            # ---------- 文字绘制（修复核心） ----------
+            mid_angle_deg = start_angle + span_angle / 2.0
             angle_rad = math.radians(mid_angle_deg)
+    
+            # 文字位置 (径向距离 radius*0.65)
             text_radius = radius * 0.65
-            text_x = text_radius * math.cos(angle_rad)
-            text_y = text_radius * math.sin(angle_rad)
+            tx = text_radius * math.cos(angle_rad)
+            ty = text_radius * math.sin(angle_rad)
     
-            painter.save()
-            painter.translate(text_x, text_y)
-            painter.rotate(mid_angle_deg)   # 文字沿径向方向
+            # 文字颜色：深色背景用白色，浅色背景用黑色，再加半透明黑色阴影增强可读性
+            text_color = QColor(Qt.white) if color.lightness() < 150 else QColor(Qt.black)
+            shadow_color = QColor(0, 0, 0, 100)
     
-            painter.setPen(QPen(Qt.black if color.lightness() > 150 else Qt.white, 1))
+            # 准备字体
             font = QFont()
             font.setBold(True)
-    
-            # 动态字体大小（防止文字超出扇区）
+            # 根据扇区大小动态调整，但最低不小于10
             max_text_height = text_radius * math.radians(sector_span) * 0.7
-            font_size = max(8, int(radius * 0.18))
-            font.setPixelSize(font_size)
-            fm = painter.fontMetrics()
-            while fm.height() > max_text_height and font_size > 6:
-                font_size -= 1
-                font.setPixelSize(font_size)
+            init_size = max(10, int(radius * 0.18))
+            font.setPixelSize(init_size)
+            while font.pixelSize() > 10:
+                painter.setFont(font)
                 fm = painter.fontMetrics()
-    
+                if fm.height() <= max_text_height:
+                    break
+                font.setPixelSize(font.pixelSize() - 1)
             painter.setFont(font)
-            text = item
-            text_width = fm.horizontalAdvance(text)
-            text_height = fm.height()
-            rect = QRectF(-text_width / 2, -text_height / 2, text_width, text_height)
-            painter.drawText(rect, Qt.AlignCenter, text)
+    
+            # 使用路径绘制文字，便于精确控制变换
+            text_path = QPainterPath()
+            fm = painter.fontMetrics()
+            # 让文字水平排列，原点是文字的左下角（baseline）
+            text_path.addText(-fm.horizontalAdvance(item)/2, fm.ascent()*0.2, font, item)
+    
+            # 保存状态，进行平移+旋转，然后绘制文字及其阴影
+            painter.save()
+            painter.translate(tx, ty)
+            # 关键：文字径向朝外，方向与中线一致。
+            # Qt 中角度 0 为 3 点钟方向，逆时针为正；需要旋转到扇区中线方向。
+            # 文字路径的 x 轴指向右，所以旋转 mid_angle_deg 后，x 轴指向径向朝外。
+            painter.rotate(mid_angle_deg)
+    
+            # 先画阴影（偏移 1 像素）
+            painter.save()
+            painter.translate(1, 1)
+            painter.fillPath(text_path, QBrush(shadow_color))
             painter.restore()
     
-        painter.restore()  # 恢复旋转
+            # 画主文字
+            painter.fillPath(text_path, QBrush(text_color))
+            painter.restore()
+            # ---------- 文字绘制完成 ----------
     
-        # ---- 中心装饰圆 ----
+        painter.restore()  # 恢复转盘旋转
+    
+        # 中心装饰
         painter.save()
         painter.translate(center)
         painter.setBrush(QBrush(QColor("#333333")))
@@ -188,7 +206,7 @@ class WheelWidget(QWidget):
                          Qt.AlignCenter, "GO")
         painter.restore()
     
-        # ---- 红色指针（固定在顶部） ----
+        # 指针
         painter.save()
         pointer_tip = QPointF(center.x(), center.y() - radius + 5)
         pointer_size = 20
