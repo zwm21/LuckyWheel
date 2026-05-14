@@ -54,13 +54,12 @@ class WheelWidget(QWidget):
         self.update()
 
     def startSpin(self, initial_velocity=None):
-        """开始旋转"""
+        """开始旋转，initial_velocity 可选，非正值则自动随机"""
         if self.spinning or len(self.items) == 0:
             return
-        # 修复：当参数为布尔值或 None 时，使用随机速度
-        if not isinstance(initial_velocity, (int, float)):
-            # 随机初速度，让每次结果不同
-            initial_velocity = random.uniform(600, 1000)
+        # 确保初速度是一个正数，否则随机
+        if not isinstance(initial_velocity, (int, float)) or initial_velocity <= 0:
+            initial_velocity = random.uniform(600, 1500)  # 稍大一些更带劲
         self.angular_velocity = initial_velocity
         self.spinning = True
         self.timer.start(self.timer_interval)
@@ -342,7 +341,7 @@ class MainWindow(QMainWindow):
 
         self.btn_spin = QPushButton("开始旋转 (或点击转盘中心)")
         self.btn_spin.setMinimumHeight(40)
-        self.btn_spin.clicked.connect(self.wheel.startSpin)
+        self.btn_spin.clicked.connect(lambda: self.wheel.startSpin())
         right_layout.addWidget(self.btn_spin)
 
         self.result_label = QLabel("")
