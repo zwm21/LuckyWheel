@@ -309,6 +309,7 @@ class MainWindow(QMainWindow):
         group_layout.addWidget(QLabel("分组:"))
         self.group_combo = QComboBox()
         self.group_combo.currentIndexChanged.connect(self.onGroupChanged)
+        self.group_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         group_layout.addWidget(self.group_combo)
         btn_add_group = QPushButton("+")
         btn_add_group.setMaximumWidth(30)
