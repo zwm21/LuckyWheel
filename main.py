@@ -57,7 +57,8 @@ class WheelWidget(QWidget):
         """开始旋转"""
         if self.spinning or len(self.items) == 0:
             return
-        if initial_velocity is None:
+        # 修复：当参数为布尔值或 None 时，使用随机速度
+        if not isinstance(initial_velocity, (int, float)):
             # 随机初速度，让每次结果不同
             initial_velocity = random.uniform(600, 1000)
         self.angular_velocity = initial_velocity
