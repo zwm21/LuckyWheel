@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QListWidget, QListWidgetItem, QComboBox, QFileDialog,
                              QMessageBox, QSplitter, QInputDialog, QSizePolicy,
-                             QAbstractItemView)
+                             QAbstractItemView, QFontComboBox)
 
 # 转盘扇区颜色池
 SECTOR_COLORS = [
@@ -41,9 +41,15 @@ class WheelWidget(QWidget):
         self.friction = 0.98         # 每帧速度衰减系数
         self.timer_interval = 30     # 毫秒
         self.result_text = ""
+        self.font_family = "汉仪文黑-65W"   # 默认字体家族
 
         self.setMinimumSize(350, 350)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def setFontFamily(self, family):
+        """设置转盘文字的字体家族"""
+        self.font_family = family
+        self.update()
 
     def setItems(self, items):
         """设置转盘项目"""
@@ -59,7 +65,7 @@ class WheelWidget(QWidget):
             return
         # 确保初速度是一个正数，否则随机
         if not isinstance(initial_velocity, (int, float)) or initial_velocity <= 0:
-            initial_velocity = random.uniform(600, 1500)  # 稍大一些更带劲
+            initial_velocity = random.uniform(600, 1500)
         self.angular_velocity = initial_velocity
         self.spinning = True
         self.timer.start(self.timer_interval)
@@ -96,35 +102,34 @@ class WheelWidget(QWidget):
         self.spinFinished.emit(sector_index, self.result_text)
 
     def paintEvent(self, event):
-        """绘制转盘——完美版：独立计算文字全局坐标，避免嵌套变换导致的裁剪"""
+        """绘制转盘——独立计算文字全局坐标，避免嵌套变换导致的裁剪"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-    
+
         side = min(self.width(), self.height())
         wheel_diameter = side * 0.88
         radius = wheel_diameter / 2.0
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
-    
+
         if len(self.items) == 0:
             painter.setPen(QPen(Qt.black, 1))
             painter.drawText(QRectF(center.x() - 60, center.y() - 10, 120, 20),
                              Qt.AlignCenter, "请添加项目")
             return
-    
+
         num = len(self.items)
         sector_span = 360.0 / num
-        rot_rad = math.radians(self.rotation)  # 当前转盘旋转角度（弧度）
-    
-        # ---------- 第 1 步：绘制扇形和装饰（使用内部变换） ----------
+        rot_rad = math.radians(self.rotation)
+
+        # ---------- 第 1 步：绘制扇形 ----------
         painter.save()
         painter.translate(center)
         painter.rotate(self.rotation)
-    
+
         for i in range(num):
             start_angle = i * sector_span
             span_angle = sector_span
-    
-            # 扇形
+
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
             painter.setBrush(QBrush(color))
             painter.setPen(QPen(Qt.white, 2))
@@ -134,35 +139,29 @@ class WheelWidget(QWidget):
                        start_angle, span_angle)
             path.lineTo(0, 0)
             painter.drawPath(path)
-    
-        # 中心装饰（在旋转坐标系内画，但装饰不旋转也没关系，我们这里也画上）
-        # 注意：中心装饰最好不要旋转，所以我们回到 widget 坐标系再画
-        painter.restore()  # 退出扇形绘制变换
-    
-        # ---------- 第 2 步：绘制文字（在 widget 原生坐标系，避免裁剪） ----------
-        # 预先计算每个文字的位置、角度和尺寸
-        text_radius = radius * 0.62          # 文字离圆心距离
-    
+
+        painter.restore()
+
+        # ---------- 第 2 步：绘制文字 ----------
+        text_radius = radius * 0.62
+
         for i, item in enumerate(self.items):
             # 扇区中线在未旋转转盘中的角度
             mid_angle_deg = i * sector_span + sector_span / 2.0
             mid_angle_rad = math.radians(mid_angle_deg)
-    
-            # 在未旋转转盘坐标系中的文字位置
+
             lx = text_radius * math.cos(mid_angle_rad)
             ly = text_radius * math.sin(mid_angle_rad)
-    
-            # 应用转盘旋转 rot_rad，得到在 widget 坐标系下的位置（相对于中心）
+
             cos_r = math.cos(rot_rad)
             sin_r = math.sin(rot_rad)
             global_x = center.x() + (lx * cos_r - ly * sin_r)
             global_y = center.y() + (lx * sin_r + ly * cos_r)
-    
-            # 文字绘制的旋转角度 = 扇区中线角度 + 转盘旋转角度
+
             final_angle_deg = mid_angle_deg + self.rotation
-    
-            # 动态字体大小（确保不溢出 widget）
-            font = QFont()
+
+            # 动态字体大小，但使用用户选择的字体家族
+            font = QFont(self.font_family)
             font.setBold(True)
             init_size = max(10, int(radius * 0.18))
             font.setPixelSize(init_size)
@@ -177,37 +176,28 @@ class WheelWidget(QWidget):
                 font.setPixelSize(font.pixelSize() - 1)
                 painter.setFont(font)
                 fm = painter.fontMetrics()
-    
+
             text_w = fm.horizontalAdvance(item)
             text_h = fm.height()
-    
-            # 绘制文字（带背景块增强可读性）
+
             painter.save()
             # 移动到全局位置，并旋转到径向朝外
             painter.translate(global_x, global_y)
             painter.rotate(final_angle_deg)
-    
-            # 文字矩形（x轴正向为径向朝外）
+
             rect = QRectF(-text_w / 2, -text_h / 2, text_w, text_h)
-    
-            # 半透明白色背景
-            #bg = QColor(255, 255, 255, 180)
-            #painter.fillRect(rect, bg)
-    
-            # 文字颜色（与扇区颜色对比）
+
+            # 阴影 + 文字（无背景）
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
             text_color = Qt.black if color.lightness() > 150 else Qt.white
-            painter.setPen(text_color)
-            # 阴影绘制（向右下偏移 1 像素）
-            painter.setPen(QColor(0, 0, 0, 120))  # 半透明黑色阴影
+            painter.setPen(QColor(0, 0, 0, 120))  # 阴影
             painter.drawText(rect.translated(1, 1), Qt.AlignCenter, item)
-
+            painter.setPen(text_color)
             painter.drawText(rect, Qt.AlignCenter, item)
-    
+
             painter.restore()
-    
-        # ---------- 第 3 步：绘制固定元素（中心圆、指针） ----------
-        # 中心圆（不旋转）
+
+        # ---------- 第 3 步：固定元素（中心圆、指针） ----------
         painter.save()
         painter.translate(center)
         painter.setBrush(QBrush(QColor("#333333")))
@@ -216,15 +206,15 @@ class WheelWidget(QWidget):
         painter.setBrush(QBrush(QColor("#555555")))
         painter.drawEllipse(QPointF(0, 0), radius * 0.1, radius * 0.1)
         painter.setPen(QPen(Qt.white, 1))
-        font = QFont()
+        font = QFont(self.font_family)
         font.setBold(True)
         font.setPixelSize(int(radius * 0.08))
         painter.setFont(font)
         painter.drawText(QRectF(-radius * 0.1, -radius * 0.1, radius * 0.2, radius * 0.2),
                          Qt.AlignCenter, "GO")
         painter.restore()
-    
-        # 指针（固定在顶部）
+
+        # 指针
         painter.save()
         pointer_tip = QPointF(center.x(), center.y() - radius + 5)
         pointer_size = 20
@@ -258,9 +248,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("幸运大转盘")
-        self.groups = []               # 分组列表 [{'name':..., 'items':[...]}, ...]
+        self.groups = []
         self.current_group_index = 0
-        self._updating_list = False    # 防止界面更新时重复触发事件
+        self._updating_list = False
+        self.font_family = "Arial"  # 新增：当前字体家族
 
         # 数据文件路径（兼容打包后的 exe）
         if getattr(sys, 'frozen', False):
@@ -280,19 +271,22 @@ class MainWindow(QMainWindow):
                 data = json.load(f)
                 self.groups = data.get('groups', [])
                 self.current_group_index = data.get('current_group', 0)
+                self.font_family = data.get('font_family', 'Arial')   # 新读取
                 if not self.groups:
                     self.groups.append({'name': '默认分组', 'items': ['选项1', '选项2', '选项3']})
                     self.current_group_index = 0
         except (FileNotFoundError, json.JSONDecodeError):
             self.groups = [{'name': '默认分组', 'items': ['选项1', '选项2', '选项3']}]
             self.current_group_index = 0
+            self.font_family = "Arial"
             self.saveData()
 
     def saveData(self):
         try:
             data = {
                 'groups': self.groups,
-                'current_group': self.current_group_index
+                'current_group': self.current_group_index,
+                'font_family': self.font_family   # 新保存
             }
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -310,7 +304,7 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout(self.left_panel)
         self.left_panel.setFixedWidth(300)
 
-        # 分组管理
+        # 分组管理（保持不变）
         group_layout = QHBoxLayout()
         group_layout.addWidget(QLabel("分组:"))
         self.group_combo = QComboBox()
@@ -384,6 +378,17 @@ class MainWindow(QMainWindow):
         )
         right_layout.addWidget(self.result_label)
 
+        # ----- 字体选择（右下角） -----
+        font_layout = QHBoxLayout()
+        font_layout.addStretch()  # 推到右侧
+        font_label = QLabel("字体:")
+        self.font_combo = QFontComboBox()
+        self.font_combo.setCurrentFont(QFont(self.font_family))
+        self.font_combo.currentFontChanged.connect(self.onFontChanged)
+        font_layout.addWidget(font_label)
+        font_layout.addWidget(self.font_combo)
+        right_layout.addLayout(font_layout)
+
         # 使用 QSplitter 可拖拽调整左右比例
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.left_panel)
@@ -393,8 +398,24 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter)
 
         self.setMinimumSize(850, 600)
+        # 初始化转盘字体
+        self.wheel.setFontFamily(self.font_family)
+
+    # ================= 字体切换 =================
+    def onFontChanged(self, font):
+        """当字体选择框改变时，更新所有相关字体"""
+        self.font_family = font.family()
+        self.wheel.setFontFamily(self.font_family)
+        # 同时更新结果标签的字体（保持大小 18px）
+        self.result_label.setStyleSheet(
+            "font-size: 18px; font-weight: bold; color: #333;"
+        )
+        self.setFont(font)
+        self.result_label.setFont(font)
+        self.saveData()
 
     # ================= 分组管理 =================
+    # （以下方法保持不变，仅列出，未改动）
     def updateGroupCombo(self):
         self.group_combo.blockSignals(True)
         self.group_combo.clear()
