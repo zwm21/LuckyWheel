@@ -279,6 +279,7 @@ class MainWindow(QMainWindow):
         self._updating_list = False
         self.font_family = "汉仪文黑-65W"  # 新增：当前字体家族
         self.shadow_enabled = True   # 给一个默认值，loadData 会覆盖
+        self.window_geometry = None
 
         # 数据文件路径（兼容打包后的 exe）
         if getattr(sys, 'frozen', False):
@@ -317,6 +318,9 @@ class MainWindow(QMainWindow):
                 self.current_group_index = data.get('current_group', 0)
                 self.font_family = data.get('font_family', '汉仪文黑-65W')   # 新读取
                 self.shadow_enabled = data.get('shadow_enabled', True)
+                self.window_geometry = data.get('window_geometry', None)
+                if self.window_geometry and len(self.window_geometry) != 4:
+                    self.window_geometry = None
                 if not self.groups:
                     self.groups.append({'name': '默认分组', 'items': ['选项1', '选项2', '选项3']})
                     self.current_group_index = 0
@@ -326,6 +330,7 @@ class MainWindow(QMainWindow):
             self.font_family = "汉仪文黑-65W"
             self.shadow_enabled = True
             self.saveData()
+            self.window_geometry = None
 
     def saveData(self):
         try:
@@ -335,6 +340,8 @@ class MainWindow(QMainWindow):
                 'font_family': self.font_family,   # 新保存
                 'shadow_enabled': self.shadow_enabled
             }
+            if self.window_geometry and len(self.window_geometry) == 4:
+                data['window_geometry'] = self.window_geometry
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
@@ -455,6 +462,17 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter)
 
         self.setMinimumSize(850, 600)
+
+        if self.window_geometry:
+            self.setGeometry(*self.window_geometry)
+        else:
+            default_w, default_h = 1024, 700
+            self.resize(default_w, default_h)
+            # 居中显示
+            screen_geo = QApplication.primaryScreen().availableGeometry()
+            x = (screen_geo.width() - default_w) // 2
+            y = (screen_geo.height() - default_h) // 2
+            self.move(x, y)
         # 初始化转盘字体
         self.wheel.setFontFamily(self.font_family)
         self.shadow_checkbox.setChecked(self.shadow_enabled)
@@ -617,6 +635,8 @@ class MainWindow(QMainWindow):
         self.btn_spin.setEnabled(True)
 
     def closeEvent(self, event):
+        geo = self.geometry()
+        self.window_geometry = [geo.x(), geo.y(), geo.width(), geo.height()]
         self.saveData()
         super().closeEvent(event)
 
