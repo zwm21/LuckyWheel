@@ -96,38 +96,38 @@ class WheelWidget(QWidget):
         self.spinFinished.emit(sector_index, self.result_text)
 
     def paintEvent(self, event):
-        """绘制转盘"""
+        """绘制转盘（修复扇形弧线单位错误）"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-
+    
         side = min(self.width(), self.height())
         wheel_diameter = side * 0.88
         radius = wheel_diameter / 2.0
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
-
+    
         if len(self.items) == 0:
             painter.setPen(QPen(Qt.black, 1))
             painter.drawText(QRectF(center.x() - 60, center.y() - 10, 120, 20),
                              Qt.AlignCenter, "请添加项目")
             return
-
+    
         num = len(self.items)
-        sector_span = 360.0 / num
-
-        # ---- 绘制可旋转的转盘主体 ----
+        sector_span = 360.0 / num     # 每个扇区的角度（度）
+    
+        # ---- 绘制可旋转的转盘主体（关键修改：arcTo 使用度，不乘16）----
         painter.save()
         painter.translate(center)
         painter.rotate(self.rotation)
-
+    
         for i, item in enumerate(self.items):
-            start_angle = i * sector_span * 16       # QPainter 用 1/16 度
-            span_angle = sector_span * 16
-
+            start_angle = i * sector_span       # 角度，度
+            span_angle = sector_span            # 跨度，度
+    
             # 扇区颜色
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
             painter.setBrush(QBrush(color))
             painter.setPen(QPen(Qt.white, 2))
-
+    
             # 扇形路径
             path = QPainterPath()
             path.moveTo(0, 0)
@@ -135,33 +135,32 @@ class WheelWidget(QWidget):
                        start_angle, span_angle)
             path.lineTo(0, 0)
             painter.drawPath(path)
-
-            # ---- 绘制文字（沿径向向外） ----
+    
+            # ---- 绘制文字（沿径向居中） ----
             mid_angle_deg = i * sector_span + sector_span / 2.0
             angle_rad = math.radians(mid_angle_deg)
             text_radius = radius * 0.65
             text_x = text_radius * math.cos(angle_rad)
             text_y = text_radius * math.sin(angle_rad)
-
+    
             painter.save()
             painter.translate(text_x, text_y)
-            painter.rotate(mid_angle_deg)  # 文字方向与径向一致
-
-            # 文字颜色根据背景亮度自动切换
+            painter.rotate(mid_angle_deg)   # 文字沿径向方向
+    
             painter.setPen(QPen(Qt.black if color.lightness() > 150 else Qt.white, 1))
             font = QFont()
             font.setBold(True)
-
-            # 根据扇区弧长动态调整字体大小
+    
+            # 动态字体大小（防止文字超出扇区）
             max_text_height = text_radius * math.radians(sector_span) * 0.7
-            font_size = max(8, int(radius * 0.2))
+            font_size = max(8, int(radius * 0.18))
             font.setPixelSize(font_size)
             fm = painter.fontMetrics()
             while fm.height() > max_text_height and font_size > 6:
                 font_size -= 1
                 font.setPixelSize(font_size)
                 fm = painter.fontMetrics()
-
+    
             painter.setFont(font)
             text = item
             text_width = fm.horizontalAdvance(text)
@@ -169,10 +168,10 @@ class WheelWidget(QWidget):
             rect = QRectF(-text_width / 2, -text_height / 2, text_width, text_height)
             painter.drawText(rect, Qt.AlignCenter, text)
             painter.restore()
-
+    
         painter.restore()  # 恢复旋转
-
-        # ---- 绘制中心装饰圆（不随转盘旋转） ----
+    
+        # ---- 中心装饰圆 ----
         painter.save()
         painter.translate(center)
         painter.setBrush(QBrush(QColor("#333333")))
@@ -180,8 +179,6 @@ class WheelWidget(QWidget):
         painter.drawEllipse(QPointF(0, 0), radius * 0.15, radius * 0.15)
         painter.setBrush(QBrush(QColor("#555555")))
         painter.drawEllipse(QPointF(0, 0), radius * 0.1, radius * 0.1)
-
-        # 中心按钮文字
         painter.setPen(QPen(Qt.white, 1))
         font = QFont()
         font.setBold(True)
@@ -190,8 +187,8 @@ class WheelWidget(QWidget):
         painter.drawText(QRectF(-radius * 0.1, -radius * 0.1, radius * 0.2, radius * 0.2),
                          Qt.AlignCenter, "GO")
         painter.restore()
-
-        # ---- 绘制指针（固定在顶部） ----
+    
+        # ---- 红色指针（固定在顶部） ----
         painter.save()
         pointer_tip = QPointF(center.x(), center.y() - radius + 5)
         pointer_size = 20
