@@ -7,7 +7,7 @@ import os
 from PyQt5.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
                           QPropertyAnimation, QEasingCurve)
 from PyQt5.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF, QPainterPath
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QListWidget, QListWidgetItem, QComboBox, QFileDialog,
                              QMessageBox, QSplitter, QInputDialog, QSizePolicy,
@@ -42,9 +42,14 @@ class WheelWidget(QWidget):
         self.timer_interval = 30     # 毫秒
         self.result_text = ""
         self.font_family = "汉仪文黑-65W"   # 默认字体家族
+        self.shadow_enabled = True   # 默认转盘字体开启阴影
 
         self.setMinimumSize(350, 350)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def setShadowEnabled(self, enabled):
+        self.shadow_enabled = enabled
+        self.update()
 
     def setFontFamily(self, family):
         """设置转盘文字的字体家族"""
@@ -190,8 +195,9 @@ class WheelWidget(QWidget):
             # 阴影 + 文字（无背景）
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
             text_color = Qt.black if color.lightness() > 150 else Qt.white
-            painter.setPen(QColor(0, 0, 0, 120))  # 阴影
-            painter.drawText(rect.translated(1, 1), Qt.AlignCenter, item)
+            if self.shadow_enabled:
+                painter.setPen(QColor(0, 0, 0, 120))  # 阴影
+                painter.drawText(rect.translated(1, 1), Qt.AlignCenter, item)
             painter.setPen(text_color)
             painter.drawText(rect, Qt.AlignCenter, item)
 
@@ -251,7 +257,8 @@ class MainWindow(QMainWindow):
         self.groups = []
         self.current_group_index = 0
         self._updating_list = False
-        self.font_family = "Arial"  # 新增：当前字体家族
+        self.font_family = "汉仪文黑-65W"  # 新增：当前字体家族
+        self.shadow_enabled = True   # 给一个默认值，loadData 会覆盖
 
         # 数据文件路径（兼容打包后的 exe）
         if getattr(sys, 'frozen', False):
@@ -264,6 +271,12 @@ class MainWindow(QMainWindow):
         self.initUI()
         self.updateWheelFromCurrentGroup()
 
+    def onShadowToggled(self, state):
+        enabled = (state == Qt.Checked)
+        self.shadow_enabled = enabled         # 关键：更新成员变量
+        self.wheel.setShadowEnabled(enabled)
+        self.saveData()
+        
     # ================= 数据持久化 =================
     def loadData(self):
         try:
@@ -271,14 +284,16 @@ class MainWindow(QMainWindow):
                 data = json.load(f)
                 self.groups = data.get('groups', [])
                 self.current_group_index = data.get('current_group', 0)
-                self.font_family = data.get('font_family', 'Arial')   # 新读取
+                self.font_family = data.get('font_family', '汉仪文黑-65W')   # 新读取
+                self.shadow_enabled = data.get('shadow_enabled', True)
                 if not self.groups:
                     self.groups.append({'name': '默认分组', 'items': ['选项1', '选项2', '选项3']})
                     self.current_group_index = 0
         except (FileNotFoundError, json.JSONDecodeError):
             self.groups = [{'name': '默认分组', 'items': ['选项1', '选项2', '选项3']}]
             self.current_group_index = 0
-            self.font_family = "Arial"
+            self.font_family = "汉仪文黑-65W"
+            self.shadow_enabled = True
             self.saveData()
 
     def saveData(self):
@@ -286,7 +301,8 @@ class MainWindow(QMainWindow):
             data = {
                 'groups': self.groups,
                 'current_group': self.current_group_index,
-                'font_family': self.font_family   # 新保存
+                'font_family': self.font_family,   # 新保存
+                'shadow_enabled': self.shadow_enabled
             }
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -390,6 +406,15 @@ class MainWindow(QMainWindow):
         font_layout.addWidget(self.font_combo)
         right_layout.addLayout(font_layout)
 
+        # 阴影开关（放在字体下方）
+        shadow_layout = QHBoxLayout()
+        shadow_layout.addStretch()   # 推到右边，保持对齐
+        self.shadow_checkbox = QCheckBox("文字阴影")
+        self.shadow_checkbox.setChecked(True)   # 默认开启，可从配置读取
+        self.shadow_checkbox.stateChanged.connect(self.onShadowToggled)
+        shadow_layout.addWidget(self.shadow_checkbox)
+        right_layout.addLayout(shadow_layout)
+
         # 使用 QSplitter 可拖拽调整左右比例
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.left_panel)
@@ -401,6 +426,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(850, 600)
         # 初始化转盘字体
         self.wheel.setFontFamily(self.font_family)
+        self.shadow_checkbox.setChecked(self.shadow_enabled)
+        self.wheel.setShadowEnabled(self.shadow_enabled)
 
     # ================= 字体切换 =================
     def onFontChanged(self, font):
