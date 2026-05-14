@@ -5,7 +5,7 @@ import math
 import os
 
 from PyQt5.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
-                          QPropertyAnimation, QEasingCurve)
+                          QPropertyAnimation, QEasingCurve, QEvent)
 from PyQt5.QtGui import QFontMetrics, QPainter, QColor, QFont, QPen, QBrush, QPixmap, QPolygonF, QPainterPath, QFontDatabase
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
@@ -353,6 +353,14 @@ class MainWindow(QMainWindow):
         self.wheel.setShadowEnabled(enabled)
         self.saveData()
         
+    def eventFilter(self, obj, event):
+        # 监听列表视口的拖放事件
+        if obj is self.list_widget.viewport() and event.type() == QEvent.Drop:
+            # 拖放完成后，使用 QTimer 确保列表数据已更新
+            QTimer.singleShot(0, self.onItemsReordered)
+            return False
+        return super().eventFilter(obj, event)
+
     # ================= 数据持久化 =================
     def loadData(self):
         try:
@@ -428,6 +436,7 @@ class MainWindow(QMainWindow):
         self.list_widget.setDragDropMode(QAbstractItemView.InternalMove)
         self.list_widget.model().layoutChanged.connect(self.onItemsReordered)
         self.list_widget.itemDoubleClicked.connect(self.editItem)
+        self.list_widget.viewport().installEventFilter(self)
         left_layout.addWidget(self.list_widget)
 
         # 项目编辑按钮
