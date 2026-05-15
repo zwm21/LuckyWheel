@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
             self.groups[self.current_group_index]['items'] = lines
             self.updateWheelFromCurrentGroup()
             self.saveData()
-            
+
     # ================= 数据持久化 =================
     def loadData(self):
         try:
@@ -426,7 +426,8 @@ class MainWindow(QMainWindow):
         # ----- 左侧编辑面板 -----
         self.left_panel = QWidget()
         left_layout = QVBoxLayout(self.left_panel)
-        self.left_panel.setFixedWidth(300)
+        self.left_panel.setMinimumWidth(250)   # 可自由调大，但不能小于 250px
+        self.left_panel.setMaximumWidth(600)   # 最大宽度，按需调整
 
         # 分组管理（保持不变）
         group_layout = QHBoxLayout()
@@ -530,10 +531,13 @@ class MainWindow(QMainWindow):
 
         # 使用 QSplitter 可拖拽调整左右比例
         splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
         splitter.addWidget(self.left_panel)
         splitter.addWidget(right_panel)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([250, 600])   # 初始左侧 300px，右侧占剩余
+
         main_layout.addWidget(splitter)
 
         self.setMinimumSize(850, 600)
