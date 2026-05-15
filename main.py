@@ -361,6 +361,24 @@ class MainWindow(QMainWindow):
             return False
         return super().eventFilter(obj, event)
 
+    def editAllItems(self):
+        """编辑当前分组的所有项目（每行一个）"""
+        if not self.groups:
+            return
+        # 将当前项目列表拼成多行文本
+        current_text = "\n".join(self.groups[self.current_group_index]['items'])
+        text, ok = QInputDialog.getMultiLineText(
+            self, "编辑所有项目",
+            "每行一个项目（可添加、删除、修改）:",
+            text=current_text
+        )
+        if ok:
+            # 按行分割，过滤空行
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            self.groups[self.current_group_index]['items'] = lines
+            self.updateWheelFromCurrentGroup()
+            self.saveData()
+            
     # ================= 数据持久化 =================
     def loadData(self):
         try:
@@ -459,6 +477,10 @@ class MainWindow(QMainWindow):
         btn_shuffle = QPushButton("随机打乱顺序")
         btn_shuffle.clicked.connect(self.shuffleItems)
         left_layout.addWidget(btn_shuffle)
+
+        btn_edit_all = QPushButton("编辑所有项目")
+        btn_edit_all.clicked.connect(self.editAllItems)
+        left_layout.addWidget(btn_edit_all)
 
         btn_clear = QPushButton("清空项目")
         btn_clear.clicked.connect(self.clearItems)
