@@ -324,6 +324,7 @@ class MainWindow(QMainWindow):
         self.font_family = "汉仪文黑-65W"  # 新增：当前字体家族
         self.shadow_enabled = True   # 给一个默认值，loadData 会覆盖
         self.window_geometry = None
+        self.splitter_sizes = None
 
         # 数据文件路径（兼容打包后的 exe）
         if getattr(sys, 'frozen', False):
@@ -391,6 +392,11 @@ class MainWindow(QMainWindow):
                 self.window_geometry = data.get('window_geometry', None)
                 if self.window_geometry and len(self.window_geometry) != 4:
                     self.window_geometry = None
+                
+                self.splitter_sizes = data.get('splitter_sizes', None)
+                if not (isinstance(self.splitter_sizes, list) and len(self.splitter_sizes) == 2):
+                    self.splitter_sizes = None
+                
                 if not self.groups:
                     self.groups.append({'name': '默认分组', 'items': ['选项1', '选项2', '选项3']})
                     self.current_group_index = 0
@@ -412,6 +418,8 @@ class MainWindow(QMainWindow):
             }
             if self.window_geometry and len(self.window_geometry) == 4:
                 data['window_geometry'] = self.window_geometry
+            if self.splitter_sizes is not None:
+                data['splitter_sizes'] = self.splitter_sizes
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
@@ -530,15 +538,18 @@ class MainWindow(QMainWindow):
         right_layout.addLayout(shadow_layout)
 
         # 使用 QSplitter 可拖拽调整左右比例
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setChildrenCollapsible(False)
-        splitter.addWidget(self.left_panel)
-        splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([250, 600])   # 初始左侧 300px，右侧占剩余
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.addWidget(self.left_panel)
+        self.splitter.addWidget(right_panel)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        if self.splitter_sizes:
+            self.splitter.setSizes(self.splitter_sizes)
+        else:
+            self.splitter.setSizes([250, 600])   # 初始左侧 300px，右侧占剩余
 
-        main_layout.addWidget(splitter)
+        main_layout.addWidget(self.splitter)
 
         self.setMinimumSize(850, 600)
 
@@ -716,6 +727,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         geo = self.geometry()
         self.window_geometry = [geo.x(), geo.y(), geo.width(), geo.height()]
+        self.splitter_sizes = self.splitter.sizes()
         self.saveData()
         super().closeEvent(event)
 
