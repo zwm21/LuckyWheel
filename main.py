@@ -380,6 +380,88 @@ class MainWindow(QMainWindow):
             self.updateWheelFromCurrentGroup()
             self.saveData()
 
+    def updateDrawnList(self):
+        """刷新抽出项目列表"""
+        if 0 <= self.current_group_index < len(self.groups):
+            drawn_items = self.groups[self.current_group_index].get('drawn_items', [])
+        else:
+            drawn_items = []
+        self.drawn_list_widget.clear()
+        self.drawn_list_widget.addItems(drawn_items)
+        self.updateDrawnButtonsState()
+
+    def updateDrawnButtonsState(self):
+        """根据是否有选中项启用/禁用操作按钮"""
+        has_selection = self.drawn_list_widget.currentItem() is not None
+        self.btn_return_drawn.setEnabled(has_selection)
+        self.btn_delete_drawn.setEnabled(has_selection)
+
+    def updateExtractButtonState(self):
+        """控制抽出按钮的可用状态"""
+        if not self.groups or self.current_group_index < 0:
+            self.btn_extract.setEnabled(False)
+            return
+        result = self.result_label.text().strip()
+        items = self.groups[self.current_group_index]['items']
+        if result and items:
+            self.btn_extract.setEnabled(True)
+        else:
+            self.btn_extract.setEnabled(False)
+
+    def extractDrawnItem(self):
+        """将抽签结果移出到抽出项目列表"""
+        if not self.groups or self.current_group_index < 0:
+            return
+        group = self.groups[self.current_group_index]
+        result = self.result_label.text().strip()
+        if not result:
+            return
+        # 提取项目文字（假设格式固定为“🎉 恭喜中奖: xxx”）
+        if result.startswith("🎉 恭喜中奖: "):
+            item_text = result.split("🎉 恭喜中奖: ", 1)[1]
+        else:
+            item_text = result
+        if item_text in group['items']:
+            group['items'].remove(item_text)
+            if 'drawn_items' not in group:
+                group['drawn_items'] = []
+            group['drawn_items'].append(item_text)
+            self.updateWheelFromCurrentGroup()
+            self.saveData()
+
+    def returnDrawnItem(self):
+        """将选中的抽出项目返回至抽签项目列表"""
+        if not self.groups:
+            return
+        group = self.groups[self.current_group_index]
+        selected = self.drawn_list_widget.currentItem()
+        if selected is None:
+            return
+        item_text = selected.text()
+        if 'drawn_items' not in group:
+            group['drawn_items'] = []
+        if item_text in group['drawn_items']:
+            group['drawn_items'].remove(item_text)
+            group['items'].append(item_text)
+            self.updateWheelFromCurrentGroup()
+            self.saveData()
+
+    def deleteDrawnItem(self):
+        """删除选中的抽出项目"""
+        if not self.groups:
+            return
+        group = self.groups[self.current_group_index]
+        selected = self.drawn_list_widget.currentItem()
+        if selected is None:
+            return
+        item_text = selected.text()
+        if 'drawn_items' not in group:
+            group['drawn_items'] = []
+        if item_text in group['drawn_items']:
+            group['drawn_items'].remove(item_text)
+            self.updateDrawnList()
+            self.saveData()
+
     # ================= 数据持久化 =================
     def loadData(self):
         try:
@@ -396,12 +478,15 @@ class MainWindow(QMainWindow):
                 self.splitter_sizes = data.get('splitter_sizes', None)
                 if not (isinstance(self.splitter_sizes, list) and len(self.splitter_sizes) == 2):
                     self.splitter_sizes = None
-                
+
+                for group in self.groups:
+                    if 'drawn_items' not in group:
+                        group['drawn_items'] = []
                 if not self.groups:
                     self.groups.append({'name': '默认分组', 'items': ['选项1', '选项2', '选项3']})
                     self.current_group_index = 0
         except (FileNotFoundError, json.JSONDecodeError):
-            self.groups = [{'name': '默认分组', 'items': ['选项1', '选项2', '选项3']}]
+            self.groups = [{'name': '默认分组', 'items': ['选项1', '选项2', '选项3'], 'drawn_items': []}]
             self.current_group_index = 0
             self.font_family = "汉仪文黑-65W"
             self.shadow_enabled = True
@@ -495,6 +580,24 @@ class MainWindow(QMainWindow):
         btn_clear.clicked.connect(self.clearItems)
         left_layout.addWidget(btn_clear)
 
+        # 抽出项目区域（紧贴清空按钮下方）
+        left_layout.addWidget(QLabel("抽出项目:"))
+        self.drawn_list_widget = QListWidget()
+        self.drawn_list_widget.setMaximumHeight(120)
+        self.drawn_list_widget.itemSelectionChanged.connect(self.updateDrawnButtonsState)
+        left_layout.addWidget(self.drawn_list_widget)
+        drawn_btn_layout = QHBoxLayout()
+        self.btn_return_drawn = QPushButton("返回项目")
+        self.btn_return_drawn.setEnabled(False)
+        self.btn_return_drawn.clicked.connect(self.returnDrawnItem)
+        drawn_btn_layout.addWidget(self.btn_return_drawn)
+        self.btn_delete_drawn = QPushButton("删除项目")
+        self.btn_delete_drawn.setEnabled(False)
+        self.btn_delete_drawn.clicked.connect(self.deleteDrawnItem)
+        drawn_btn_layout.addWidget(self.btn_delete_drawn)
+        left_layout.addLayout(drawn_btn_layout)
+        
+        # 弹性空间放在最下方，保证以上控件始终靠上
         left_layout.addStretch()
 
         # ----- 右侧转盘区域 -----
@@ -516,6 +619,12 @@ class MainWindow(QMainWindow):
             "font-size: 18px; font-weight: bold; color: #333;"
         )
         right_layout.addWidget(self.result_label)
+
+        self.btn_extract = QPushButton("抽出")
+        self.btn_extract.setFixedHeight(26)           # 约为开始按钮高度的2/3
+        self.btn_extract.setMaximumWidth(100)
+        self.btn_extract.clicked.connect(self.extractDrawnItem)
+        right_layout.addWidget(self.btn_extract)
 
         # ----- 字体选择（右下角） -----
         font_layout = QHBoxLayout()
@@ -568,6 +677,8 @@ class MainWindow(QMainWindow):
         self.shadow_checkbox.setChecked(self.shadow_enabled)
         self.wheel.setShadowEnabled(self.shadow_enabled)
 
+        self.btn_extract.setEnabled(False)   # 初始无结果，禁用
+
     # ================= 字体切换 =================
     def onFontChanged(self, font):
         """当字体选择框改变时，更新所有相关字体"""
@@ -606,16 +717,20 @@ class MainWindow(QMainWindow):
             self.wheel.setItems([])
         self._updating_list = False
 
+        self.updateDrawnList()
+        self.updateExtractButtonState()
+
     def onGroupChanged(self, index):
         if index >= 0:
             self.current_group_index = index
             self.updateWheelFromCurrentGroup()
+            self.updateExtractButtonState()
             self.saveData()
 
     def addGroup(self):
         name, ok = QInputDialog.getText(self, "添加分组", "分组名称:")
         if ok and name.strip():
-            self.groups.append({'name': name.strip(), 'items': []})
+            self.groups.append({'name': name.strip(), 'items': [], 'drawn_items': []})
             self.current_group_index = len(self.groups) - 1
             self.updateWheelFromCurrentGroup()
             self.saveData()
@@ -697,6 +812,7 @@ class MainWindow(QMainWindow):
             self.groups[self.current_group_index]['items'] = items
             self.wheel.setItems(items)
             self.saveData()
+            self.updateExtractButtonState()
 
     def shuffleItems(self):
         if self.groups and self.groups[self.current_group_index]['items']:
@@ -717,12 +833,14 @@ class MainWindow(QMainWindow):
         """旋转开始时禁用编辑"""
         self.left_panel.setEnabled(False)
         self.btn_spin.setEnabled(False)
+        self.btn_extract.setEnabled(False)
 
     def onSpinFinished(self, index, text):
         """旋转结束时显示结果并恢复编辑"""
         self.result_label.setText(f"🎉 恭喜中奖: {text}")
         self.left_panel.setEnabled(True)
         self.btn_spin.setEnabled(True)
+        self.updateExtractButtonState()
 
     def closeEvent(self, event):
         geo = self.geometry()
