@@ -441,9 +441,15 @@ class MainWindow(QMainWindow):
         if 'drawn_items' not in group:
             group['drawn_items'] = []
         if item_text in group['drawn_items']:
+            idx = group['drawn_items'].index(item_text)   # 记录当前索引
             group['drawn_items'].remove(item_text)
             group['items'].append(item_text)
-            self.updateWheelFromCurrentGroup()
+            self.updateWheelFromCurrentGroup()             # 会刷新抽出列表
+            # 自动选中下一个项目（优先原位置，否则最后一个）
+            drawn = group.get('drawn_items', [])
+            if drawn:
+                new_idx = min(idx, len(drawn) - 1)
+                self.drawn_list_widget.setCurrentRow(new_idx)
             self.saveData()
 
     def deleteDrawnItem(self):
@@ -458,8 +464,13 @@ class MainWindow(QMainWindow):
         if 'drawn_items' not in group:
             group['drawn_items'] = []
         if item_text in group['drawn_items']:
+            idx = group['drawn_items'].index(item_text)
             group['drawn_items'].remove(item_text)
-            self.updateDrawnList()
+            self.updateDrawnList()                         # 只刷新抽出列表
+            drawn = group.get('drawn_items', [])
+            if drawn:
+                new_idx = min(idx, len(drawn) - 1)
+                self.drawn_list_widget.setCurrentRow(new_idx)
             self.saveData()
 
     # ================= 数据持久化 =================
