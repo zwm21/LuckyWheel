@@ -553,7 +553,7 @@ class MainWindow(QMainWindow):
         panel_h = self.left_panel.height()
     
         # 抽签项目列表：最大高度 = 面板高 - 下方全部控件最小高度(约 200)
-        max_list = max(80, panel_h - 0)
+        max_list = max(800, panel_h - 0)
         target_list = min(self.user_list_height, max_list)
         self.list_widget.setFixedHeight(target_list)
     
