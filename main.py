@@ -46,13 +46,14 @@ def loadEmbeddedFont(font_filename):
     return None
 
 class SplitterHandle(QFrame):
-    """可拖拽的分隔条，用于调整上方列表的高度"""
-    def __init__(self, list_widget, save_callback, set_height_callback, left_panel, parent=None):
+    def __init__(self, list_widget, save_callback, set_height_callback,
+                 left_panel, max_height_func=None, parent=None):
         super().__init__(parent)
-        self.list_widget = list_widget      # 直接持有列表控件引用
-        self.save_callback = save_callback  # 保存数据的回调
+        self.list_widget = list_widget
+        self.save_callback = save_callback
         self.set_height_callback = set_height_callback
-        self.left_panel = left_panel        # 左侧面板，用于计算最大高度
+        self.left_panel = left_panel
+        self.max_height_func = max_height_func or (lambda: self.left_panel.height() - 200)
         self.setFrameShape(QFrame.HLine)
         self.setFrameShadow(QFrame.Plain)
         self.setStyleSheet("QFrame { border: 1px solid #ccc; background: #eee; }")
@@ -75,8 +76,8 @@ class SplitterHandle(QFrame):
         if self._dragging:
             delta = event.globalY() - self._start_y
             new_height = self._start_height + delta
-            min_h = 80
-            max_h = self.left_panel.height() - 200   # 保证下方区域至少 200px
+            min_h = 60
+            max_h = self.max_height_func()          # 动态计算
             new_height = max(min_h, min(new_height, max_h))
             self.list_widget.setFixedHeight(new_height)
             event.accept()
@@ -236,23 +237,9 @@ class WheelWidget(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, 'list_widget') and hasattr(self, 'left_panel'):
-            # 项目列表最大高度：左侧面板总高 - 下方所有控件的最小合计高度(约250)
-            max_list_h = self.left_panel.height() - 250
-            if self.user_list_height > max_list_h:
-                self.list_widget.setFixedHeight(max_list_h)
-            else:
-                self.list_widget.setFixedHeight(self.user_list_height)
-    
-        if hasattr(self, 'drawn_list_widget') and hasattr(self, 'left_panel'):
-            # 抽出列表最大高度：左侧面板总高 - 上方区域已占高度 - 按钮最小高度
-            used_h = self.list_widget.height() + 200   # 200 为上方按钮、标签等的最小合计
-            max_drawn_h = self.left_panel.height() - used_h
-            max_drawn_h = max(60, max_drawn_h)         # 至少保留 60px
-            if self.drawn_user_height > max_drawn_h:
-                self.drawn_list_widget.setFixedHeight(max_drawn_h)
-            else:
-                self.drawn_list_widget.setFixedHeight(self.drawn_user_height)
+        self.cached_pixmap = None
+        self.cached_size = None
+        self.update()
 
     def startSpin(self, initial_velocity=None):
         """开始旋转，initial_velocity 可选，非正值则自动随机"""
@@ -560,11 +547,22 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # 确保列表高度不超过合理范围
-        if hasattr(self, 'list_widget') and hasattr(self, 'left_panel'):
-            max_h = self.left_panel.height() - 200
-            if self.list_widget.height() > max_h:
-                self.list_widget.setFixedHeight(max_h)
+        if not hasattr(self, 'list_widget') or not hasattr(self, 'left_panel'):
+            return
+    
+        panel_h = self.left_panel.height()
+    
+        # 抽签项目列表：最大高度 = 面板高 - 下方全部控件最小高度(约 200)
+        max_list = max(80, panel_h - 0)
+        target_list = min(self.user_list_height, max_list)
+        self.list_widget.setFixedHeight(target_list)
+    
+        # 抽出项目列表：最大高度 = 面板高 - 上方已占 - 下方按钮区
+        # 上方已占：项目列表高度 + 分隔条高度 + 编辑按钮区域等（大约 180 像素）
+        used_top = self.list_widget.height() + 6 - 180   # 6 是分隔条高度，180 是编辑按钮、标签等
+        max_drawn = max(600, panel_h - used_top - 40)     # 40 是抽出按钮区
+        target_drawn = min(self.drawn_user_height, max_drawn)
+        self.drawn_list_widget.setFixedHeight(target_drawn)
 
     def onUserHeightChanged(self, new_height):
         """拖拽结束时保存用户设定的高度"""
@@ -613,10 +611,11 @@ class MainWindow(QMainWindow):
             data = {
                 'groups': self.groups,
                 'current_group': self.current_group_index,
-                'font_family': self.font_family,   # 新保存
+                'font_family': self.font_family,
                 'shadow_enabled': self.shadow_enabled,
-                'list_height': self.user_list_height,
-                'drawn_list_height': self.drawn_user_height
+                # 保存实际显示的高度（所见即所得）
+                'list_height': self.list_widget.height() if hasattr(self, 'list_widget') else self.user_list_height,
+                'drawn_list_height': self.drawn_list_widget.height() if hasattr(self, 'drawn_list_widget') else self.drawn_user_height
             }
             if self.window_geometry and len(self.window_geometry) == 4:
                 data['window_geometry'] = self.window_geometry
@@ -673,20 +672,22 @@ class MainWindow(QMainWindow):
         self.list_widget.setFixedHeight(self.user_list_height)   # 使用保存的用户高度
         left_layout.addWidget(self.list_widget)
 
-        # 分隔条
+        # 第一个分隔条
         self.splitter_handle = SplitterHandle(
             list_widget=self.list_widget,
             save_callback=self.saveData,
-            set_height_callback=self.onUserHeightChanged,    # 新增回调
+            set_height_callback=self.onUserHeightChanged,
             left_panel=self.left_panel,
+            max_height_func=lambda: max(80, self.left_panel.height() - 0),
             parent=self.left_panel
         )
+
         left_layout.addWidget(self.splitter_handle)
 
         # ===== 下方固定区域（按钮 + 抽出项目 + 抽出操作） =====
-        bottom_widget = QWidget()
-        bottom_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        bottom_layout = QVBoxLayout(bottom_widget)
+        self.bottom_widget = QWidget()
+        self.bottom_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        bottom_layout = QVBoxLayout(self.bottom_widget)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(4)
 
@@ -723,8 +724,9 @@ class MainWindow(QMainWindow):
         bottom_layout.addWidget(QLabel("抽出项目:"))
         self.drawn_list_widget = QListWidget()
         self.drawn_list_widget.setFixedHeight(self.drawn_user_height)  # 初始高度
-        self.drawn_list_widget.setMaximumHeight(300)                   # 硬上限，可删除，由拖动动态限制
+        self.drawn_list_widget.setMaximumHeight(900)                   # 硬上限，可删除，由拖动动态限制
         self.drawn_list_widget.itemSelectionChanged.connect(self.updateDrawnButtonsState)
+        self.drawn_list_widget.setStyleSheet("QListWidget { padding: 0px; }")
         bottom_layout.addWidget(self.drawn_list_widget)
 
         # 分隔条2
@@ -752,7 +754,7 @@ class MainWindow(QMainWindow):
         drawn_btn_layout.addWidget(self.btn_delete_drawn)
         bottom_layout.addWidget(drawn_btn_widget)
 
-        left_layout.addWidget(bottom_widget)
+        left_layout.addWidget(self.bottom_widget)
         left_layout.addStretch(1)   # 吸收剩余高度
         # 不再需要 addStretch()，因为列表高度已由用户控制，空白区域可被列表占用
         
