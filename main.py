@@ -438,18 +438,29 @@ class MainWindow(QMainWindow):
         if selected is None:
             return
         item_text = selected.text()
-        if 'drawn_items' not in group:
-            group['drawn_items'] = []
+        current_row = self.drawn_list_widget.currentRow()
+        total_rows = self.drawn_list_widget.count()
+    
+        # 计算下一个要选中的行号
+        next_row = -1
+        if total_rows > 1:
+            if current_row == total_rows - 1:
+                next_row = current_row - 1    # 最后一项 → 上一项
+            else:
+                next_row = current_row #+ 1    # 否则 → 下一项
+    
+        # 执行移除
         if item_text in group['drawn_items']:
-            idx = group['drawn_items'].index(item_text)   # 记录当前索引
             group['drawn_items'].remove(item_text)
             group['items'].append(item_text)
-            self.updateWheelFromCurrentGroup()             # 会刷新抽出列表
-            # 自动选中下一个项目（优先原位置，否则最后一个）
-            drawn = group.get('drawn_items', [])
-            if drawn:
-                new_idx = min(idx, len(drawn) - 1)
-                self.drawn_list_widget.setCurrentRow(new_idx)
+            self.updateWheelFromCurrentGroup()   # 刷新列表
+    
+            # 按索引直接选中
+            if next_row >= 0 and self.drawn_list_widget.count() > 0:
+                # 防止索引越界（移除后列表缩短）
+                if next_row >= self.drawn_list_widget.count():
+                    next_row = self.drawn_list_widget.count() - 1
+                self.drawn_list_widget.setCurrentRow(next_row)
             self.saveData()
 
     def deleteDrawnItem(self):
@@ -461,16 +472,24 @@ class MainWindow(QMainWindow):
         if selected is None:
             return
         item_text = selected.text()
-        if 'drawn_items' not in group:
-            group['drawn_items'] = []
+        current_row = self.drawn_list_widget.currentRow()
+        total_rows = self.drawn_list_widget.count()
+    
+        next_row = -1
+        if total_rows > 1:
+            if current_row == total_rows - 1:
+                next_row = current_row - 1
+            else:
+                next_row = current_row #+ 1
+    
         if item_text in group['drawn_items']:
-            idx = group['drawn_items'].index(item_text)
             group['drawn_items'].remove(item_text)
-            self.updateDrawnList()                         # 只刷新抽出列表
-            drawn = group.get('drawn_items', [])
-            if drawn:
-                new_idx = min(idx, len(drawn) - 1)
-                self.drawn_list_widget.setCurrentRow(new_idx)
+            self.updateDrawnList()              # 刷新
+    
+            if next_row >= 0 and self.drawn_list_widget.count() > 0:
+                if next_row >= self.drawn_list_widget.count():
+                    next_row = self.drawn_list_widget.count() - 1
+                self.drawn_list_widget.setCurrentRow(next_row)
             self.saveData()
 
     # ================= 数据持久化 =================
