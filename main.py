@@ -822,11 +822,30 @@ class MainWindow(QMainWindow):
                 self.saveData()
 
     def deleteItem(self):
+        if not self.groups:
+            return
+        group = self.groups[self.current_group_index]
         row = self.list_widget.currentRow()
-        if row >= 0:
-            del self.groups[self.current_group_index]['items'][row]
-            self.updateWheelFromCurrentGroup()
-            self.saveData()
+        if row < 0 or row >= len(group['items']):
+            return
+        current_row = row
+        total_items = len(group['items'])
+        # 计算下一个要选中的行号
+        next_row = -1
+        if total_items > 1:
+            if current_row == total_items - 1:    # 最后一项 → 选上一项
+                next_row = current_row - 1
+            else:                                 # 否则选正下方（删除后原下一项会占据当前行）
+                next_row = current_row
+        # 执行删除
+        del group['items'][row]
+        self.updateWheelFromCurrentGroup()        # 刷新列表
+        self.saveData()
+        # 自动选中下一个项目
+        if next_row >= 0 and self.list_widget.count() > 0:
+            if next_row >= self.list_widget.count():
+                next_row = self.list_widget.count() - 1
+            self.list_widget.setCurrentRow(next_row)
 
     def editItem(self, item=None):
         if isinstance(item, QListWidgetItem):
