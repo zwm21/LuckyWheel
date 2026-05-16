@@ -608,10 +608,23 @@ class MainWindow(QMainWindow):
         self.wheel.spinFinished.connect(self.onSpinFinished)
         right_layout.addWidget(self.wheel)
 
+        # 按钮行：抽出 + 开始旋转
+        spin_layout = QHBoxLayout()
+        spin_layout.setSpacing(5)  # 按钮之间的空隙（可根据喜好调整）
+
+        self.btn_extract = QPushButton("抽出")
+        self.btn_extract.setFixedHeight(40)          # 略小于开始按钮高度
+        self.btn_extract.setMaximumWidth(80)
+        self.btn_extract.clicked.connect(self.extractDrawnItem)
+        spin_layout.addWidget(self.btn_extract)
+
         self.btn_spin = QPushButton("开始旋转 (或点击转盘中心)")
         self.btn_spin.setMinimumHeight(40)
         self.btn_spin.clicked.connect(lambda: self.wheel.startSpin())
-        right_layout.addWidget(self.btn_spin)
+        spin_layout.addWidget(self.btn_spin, 1)     # stretch=1，让开始按钮占满剩余空间
+
+        right_layout.addLayout(spin_layout)
+        
 
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignCenter)
@@ -620,11 +633,6 @@ class MainWindow(QMainWindow):
         )
         right_layout.addWidget(self.result_label)
 
-        self.btn_extract = QPushButton("抽出")
-        self.btn_extract.setFixedHeight(26)           # 约为开始按钮高度的2/3
-        self.btn_extract.setMaximumWidth(100)
-        self.btn_extract.clicked.connect(self.extractDrawnItem)
-        right_layout.addWidget(self.btn_extract)
 
         # ----- 字体选择（右下角） -----
         font_layout = QHBoxLayout()
