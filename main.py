@@ -847,20 +847,25 @@ class MainWindow(QMainWindow):
         self.wheel.setShadowEnabled(self.shadow_enabled)
 
         self.btn_extract.setEnabled(False)   # 初始无结果，禁用
+        self.applyGlobalFont(self.font_family) # 应用全局字体
 
     # ================= 字体切换 =================
     def onFontChanged(self, font):
-        """当字体选择框改变时，更新所有相关字体"""
         self.font_family = font.family()
-        self.wheel.setFontFamily(self.font_family)
-        # 同时更新结果标签的字体（保持大小 18px）
-        self.result_label.setStyleSheet(
-            "font-size: 18px; font-weight: bold; color: #333;"
-        )
-        self.setFont(font)
-        self.result_label.setFont(font)
+        self.applyGlobalFont(self.font_family)
         self.saveData()
 
+    def applyGlobalFont(self, family):
+        """将指定字体家族应用到整个窗口及关键控件"""
+        font = QFont(family)
+        # 设置主窗口字体，子控件默认继承
+        self.setFont(font)
+        # 转盘文字
+        self.wheel.setFontFamily(family)
+        # 结果标签（stylesheet 中未指定 family，所以 setFont 生效）
+        self.result_label.setFont(font)
+        # 字体选择框的当前字体同步
+        self.font_combo.setCurrentFont(font)
     # ================= 分组管理 =================
     # （以下方法保持不变，仅列出，未改动）
     def updateGroupCombo(self):
