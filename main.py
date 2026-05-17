@@ -7,7 +7,7 @@ import os
 from PyQt5.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
                           QPropertyAnimation, QEasingCurve, QEvent)
 from PyQt5.QtGui import QFontMetrics, QPainter, QColor, QFont, QPen, QBrush, QPixmap, QPolygonF, QPainterPath, QFontDatabase
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QFrame, QMainWindow, QWidget, QVBoxLayout,
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QFrame, QMainWindow, QSpinBox, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QListWidget, QListWidgetItem, QComboBox, QFileDialog,
                              QMessageBox, QSplitter, QInputDialog, QSizePolicy,
@@ -112,13 +112,24 @@ class WheelWidget(QWidget):
         self.friction = 0.98         # 每帧速度衰减系数
         self.timer_interval = 30     # 毫秒
         self.result_text = ""
-        self.font_family = "汉仪文黑-65W"   # 默认字体家族
-        self.shadow_enabled = True   # 默认转盘字体开启阴影
+        self.ui_font_family = "汉仪文黑-65W"
+        self.ui_font_size = 9
+        self.wheel_font_family = "汉仪文黑-65W"
+        self.wheel_font_size = 0          # 0 表示自动计算字号
+        self.shadow_enabled = True
         self.cached_pixmap = None   # 离屏转盘图像（不含旋转）
         self.cached_size = None     # 上次生成缓存时的 widget 尺寸
+        self.font_size = 0          # 0=自动，>0=固定像素大小
 
         self.setMinimumSize(350, 350)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def setFontSize(self, size):
+        """设置转盘文字固定大小，0 为自动"""
+        self.font_size = size
+        self.cached_pixmap = None
+        self.cached_size = None
+        self.update()
 
     def renderCache(self):
         """将当前所有项目绘制到一个固定 pixmap 上（不包含旋转）"""
@@ -174,7 +185,10 @@ class WheelWidget(QWidget):
             # 动态字体大小（与原版完全相同）
             font = QFont(self.font_family)
             font.setBold(True)
-            init_size = max(10, int(radius * 0.18))
+            if self.font_size > 0:
+                init_size = self.font_size
+            else:
+                init_size = max(10, int(radius * 0.18))
             font.setPixelSize(init_size)
             painter.setFont(font)
             fm = painter.fontMetrics()
@@ -387,11 +401,13 @@ class MainWindow(QMainWindow):
         self.data_file = os.path.join(app_dir, "wheel_data.json")
 
         # 优先使用内嵌字体，失败则使用默认后备
-        embedded_font = loadEmbeddedFont("HYWenHei-65W.ttf")  # 替换为你的字体文件名
+        embedded_font = loadEmbeddedFont("HYWenHei-65W.ttf")
         if embedded_font:
-            self.font_family = embedded_font
+            self.ui_font_family = embedded_font
+            self.wheel_font_family = embedded_font
         else:
-            self.font_family = "Microsoft YaHei"  # 后备字体
+            self.ui_font_family = "Microsoft YaHei"
+            self.wheel_font_family = "Microsoft YaHei"
         print("使用字体:", self.font_family)  # 调试用，可删除
 
         self.loadData()
@@ -572,6 +588,35 @@ class MainWindow(QMainWindow):
         """拖拽抽出列表分隔条时保存高度"""
         self.drawn_user_height = new_height
 
+    def applyUIFont(self):
+        """应用界面字体到全局"""
+        font = QFont(self.ui_font_family, self.ui_font_size)
+        QApplication.setFont(font)
+
+    def applyWheelFont(self):
+        """应用转盘字体到 WheelWidget"""
+        self.wheel.setFontFamily(self.wheel_font_family)
+        self.wheel.setFontSize(self.wheel_font_size)
+
+    def onUIFontChanged(self, font):
+        self.ui_font_family = font.family()
+        self.applyUIFont()
+        self.saveData()
+
+    def onUIFontSizeChanged(self, size):
+        self.ui_font_size = size
+        self.applyUIFont()
+        self.saveData()
+
+    def onWheelFontChanged(self, font):
+        self.wheel_font_family = font.family()
+        self.applyWheelFont()
+        self.saveData()
+
+    def onWheelFontSizeChanged(self, size):
+        self.wheel_font_size = size
+        self.applyWheelFont()
+        self.saveData()
     # ================= 数据持久化 =================
     def loadData(self):
         try:
@@ -579,7 +624,11 @@ class MainWindow(QMainWindow):
                 data = json.load(f)
                 self.groups = data.get('groups', [])
                 self.current_group_index = data.get('current_group', 0)
-                self.font_family = data.get('font_family', '汉仪文黑-65W')   # 新读取
+                # 读取新字段，兼容旧 font_family
+                self.ui_font_family = data.get('ui_font_family', data.get('font_family', '汉仪文黑-65W'))
+                self.ui_font_size = data.get('ui_font_size', 9)
+                self.wheel_font_family = data.get('wheel_font_family', data.get('font_family', '汉仪文黑-65W'))
+                self.wheel_font_size = data.get('wheel_font_size', 0)
                 self.shadow_enabled = data.get('shadow_enabled', True)
                 self.window_geometry = data.get('window_geometry', None)
                 if self.window_geometry and len(self.window_geometry) != 4:
@@ -611,7 +660,10 @@ class MainWindow(QMainWindow):
             data = {
                 'groups': self.groups,
                 'current_group': self.current_group_index,
-                'font_family': self.font_family,
+                'ui_font_family': self.ui_font_family,
+                'ui_font_size': self.ui_font_size,
+                'wheel_font_family': self.wheel_font_family,
+                'wheel_font_size': self.wheel_font_size,
                 'shadow_enabled': self.shadow_enabled,
                 # 保存实际显示的高度（所见即所得）
                 'list_height': self.list_widget.height() if hasattr(self, 'list_widget') else self.user_list_height,
@@ -795,25 +847,47 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.result_label)
 
 
-        # ----- 字体选择（右下角） -----
-        font_layout = QHBoxLayout()
-        font_layout.addStretch()  # 推到右侧
-        font_label = QLabel("字体:")
-        self.font_combo = QFontComboBox()
-        self.font_combo.setCurrentFont(QFont(self.font_family))
-        self.font_combo.currentFontChanged.connect(self.onFontChanged)
-        font_layout.addWidget(font_label)
-        font_layout.addWidget(self.font_combo)
-        right_layout.addLayout(font_layout)
+        # ===== 界面字体 =====
+        ui_font_layout = QHBoxLayout()
+        ui_font_layout.addStretch()
+        ui_font_layout.addWidget(QLabel("界面字体:"))
+        self.ui_font_combo = QFontComboBox()
+        self.ui_font_combo.setCurrentFont(QFont(self.ui_font_family))
+        self.ui_font_combo.currentFontChanged.connect(self.onUIFontChanged)
+        ui_font_layout.addWidget(self.ui_font_combo)
 
-        # 阴影开关（放在字体下方）
-        shadow_layout = QHBoxLayout()
-        shadow_layout.addStretch()   # 推到右边，保持对齐
+        ui_font_layout.addWidget(QLabel("大小:"))
+        self.ui_font_size_spin = QSpinBox()
+        self.ui_font_size_spin.setRange(8, 72)
+        self.ui_font_size_spin.setValue(self.ui_font_size)
+        self.ui_font_size_spin.valueChanged.connect(self.onUIFontSizeChanged)
+        ui_font_layout.addWidget(self.ui_font_size_spin)
+        right_layout.addLayout(ui_font_layout)
+
+        # ===== 转盘字体 =====
+        wheel_font_layout = QHBoxLayout()
+        wheel_font_layout.addStretch()
+        wheel_font_layout.addWidget(QLabel("转盘字体:"))
+        self.wheel_font_combo = QFontComboBox()
+        self.wheel_font_combo.setCurrentFont(QFont(self.wheel_font_family))
+        self.wheel_font_combo.currentFontChanged.connect(self.onWheelFontChanged)
+        wheel_font_layout.addWidget(self.wheel_font_combo)
+
+        wheel_font_layout.addWidget(QLabel("大小:"))
+        self.wheel_font_size_spin = QSpinBox()
+        self.wheel_font_size_spin.setRange(0, 72)
+        self.wheel_font_size_spin.setSpecialValueText("自动")
+        self.wheel_font_size_spin.setValue(self.wheel_font_size)
+        self.wheel_font_size_spin.valueChanged.connect(self.onWheelFontSizeChanged)
+        wheel_font_layout.addWidget(self.wheel_font_size_spin)
+
+        # 阴影开关
         self.shadow_checkbox = QCheckBox("文字阴影")
-        self.shadow_checkbox.setChecked(True)   # 默认开启，可从配置读取
+        self.shadow_checkbox.setChecked(self.shadow_enabled)
         self.shadow_checkbox.stateChanged.connect(self.onShadowToggled)
-        shadow_layout.addWidget(self.shadow_checkbox)
-        right_layout.addLayout(shadow_layout)
+        wheel_font_layout.addWidget(self.shadow_checkbox)
+
+        right_layout.addLayout(wheel_font_layout)
 
         # 使用 QSplitter 可拖拽调整左右比例
         self.splitter = QSplitter(Qt.Horizontal)
@@ -842,18 +916,16 @@ class MainWindow(QMainWindow):
             y = (screen_geo.height() - default_h) // 2
             self.move(x, y)
         # 初始化转盘字体
-        self.wheel.setFontFamily(self.font_family)
         self.shadow_checkbox.setChecked(self.shadow_enabled)
         self.wheel.setShadowEnabled(self.shadow_enabled)
 
         self.btn_extract.setEnabled(False)   # 初始无结果，禁用
-        self.applyGlobalFont(self.font_family) # 应用全局字体
+        #self.applyGlobalFont(self.font_family) # 应用全局字体
+        # 应用保存的字体设置
+        self.applyUIFont()
+        self.applyWheelFont()
 
     # ================= 字体切换 =================
-    def onFontChanged(self, font):
-        self.font_family = font.family()
-        self.applyGlobalFont(self.font_family)
-        self.saveData()
 
     def applyGlobalFont(self, family):
         """将指定字体家族应用到整个窗口及关键控件"""
