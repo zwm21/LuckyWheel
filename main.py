@@ -881,13 +881,16 @@ class MainWindow(QMainWindow):
         self.wheel_font_size_spin.valueChanged.connect(self.onWheelFontSizeChanged)
         wheel_font_layout.addWidget(self.wheel_font_size_spin)
 
-        # 阴影开关
+        right_layout.addLayout(wheel_font_layout)
+
+        # ===== 文字阴影（单独一行，靠右） =====
+        shadow_layout = QHBoxLayout()
+        shadow_layout.addStretch()
         self.shadow_checkbox = QCheckBox("文字阴影")
         self.shadow_checkbox.setChecked(self.shadow_enabled)
         self.shadow_checkbox.stateChanged.connect(self.onShadowToggled)
-        wheel_font_layout.addWidget(self.shadow_checkbox)
-
-        right_layout.addLayout(wheel_font_layout)
+        shadow_layout.addWidget(self.shadow_checkbox)
+        right_layout.addLayout(shadow_layout)
 
         # 使用 QSplitter 可拖拽调整左右比例
         self.splitter = QSplitter(Qt.Horizontal)
