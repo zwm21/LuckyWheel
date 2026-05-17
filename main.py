@@ -858,8 +858,9 @@ class MainWindow(QMainWindow):
 
         ui_font_layout.addWidget(QLabel("大小:"))
         self.ui_font_size_spin = QSpinBox()
-        self.ui_font_size_spin.setRange(8, 72)
+        self.ui_font_size_spin.setRange(1, 72)
         self.ui_font_size_spin.setValue(self.ui_font_size)
+        self.ui_font_size_spin.setFixedWidth(42)          # ← 添加这行
         self.ui_font_size_spin.valueChanged.connect(self.onUIFontSizeChanged)
         ui_font_layout.addWidget(self.ui_font_size_spin)
         right_layout.addLayout(ui_font_layout)
@@ -878,6 +879,7 @@ class MainWindow(QMainWindow):
         self.wheel_font_size_spin.setRange(0, 72)
         self.wheel_font_size_spin.setSpecialValueText("自动")
         self.wheel_font_size_spin.setValue(self.wheel_font_size)
+        self.wheel_font_size_spin.setFixedWidth(42)       # ← 添加这行
         self.wheel_font_size_spin.valueChanged.connect(self.onWheelFontSizeChanged)
         wheel_font_layout.addWidget(self.wheel_font_size_spin)
 
