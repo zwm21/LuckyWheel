@@ -519,8 +519,9 @@ class MainWindow(QMainWindow):
                 next_row = current_row #+ 1    # 否则 → 下一项
     
         # 执行移除
-        if item_text in group['drawn_items']:
-            group['drawn_items'].remove(item_text)
+        if 0 <= current_row < len(group['drawn_items']):
+            item_text = group['drawn_items'][current_row]   # 根据索引获取准确项目
+            del group['drawn_items'][current_row]           # 根据索引删除
             group['items'].append(item_text)
             self.updateWheelFromCurrentGroup()   # 刷新列表
     
@@ -551,8 +552,8 @@ class MainWindow(QMainWindow):
             else:
                 next_row = current_row #+ 1
     
-        if item_text in group['drawn_items']:
-            group['drawn_items'].remove(item_text)
+        if 0 <= current_row < len(group['drawn_items']):
+            del group['drawn_items'][current_row]
             self.updateDrawnList()              # 刷新
     
             if next_row >= 0 and self.drawn_list_widget.count() > 0:
