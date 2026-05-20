@@ -1,3 +1,4 @@
+import secrets
 import sys
 import json
 import random
@@ -261,7 +262,7 @@ class WheelWidget(QWidget):
             return
         # 确保初速度是一个正数，否则随机
         if not isinstance(initial_velocity, (int, float)) or initial_velocity <= 0:
-            initial_velocity = random.uniform(600, 1500)
+            initial_velocity = 600 + secrets.randbelow(1_500_000) / 1000.0
         self.angular_velocity = initial_velocity
         self.spinning = True
         self.timer.start(self.timer_interval)
