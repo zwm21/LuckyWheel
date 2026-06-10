@@ -8,7 +8,7 @@ import os
 from PyQt5.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
                           QPropertyAnimation, QEasingCurve, QEvent)
 from PyQt5.QtGui import QFontMetrics, QPainter, QColor, QFont, QPen, QBrush, QPixmap, QPolygonF, QPainterPath, QFontDatabase
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QFrame, QMainWindow, QSpinBox, QWidget, QVBoxLayout,
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame, QMainWindow, QSpinBox, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QListWidget, QListWidgetItem, QComboBox, QFileDialog,
                              QMessageBox, QSplitter, QInputDialog, QSizePolicy,
@@ -563,6 +563,52 @@ class MainWindow(QMainWindow):
                 self.drawn_list_widget.setCurrentRow(next_row)
             self.saveData()
 
+    def editDrawnItem(self, item=None):
+        """双击编辑抽出项目"""
+        if not self.groups:
+            return
+        row = self.drawn_list_widget.currentRow()
+        group = self.groups[self.current_group_index]
+        if row < 0 or row >= len(group.get('drawn_items', [])):
+            return
+        old_text = group['drawn_items'][row]
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("编辑抽出项目")
+        dlg.setMinimumWidth(350)
+        layout = QVBoxLayout(dlg)
+
+        edit = QLineEdit(old_text)
+        edit.selectAll()
+        layout.addWidget(edit)
+
+        btn_layout = QHBoxLayout()
+
+        def copy_text():
+            QApplication.clipboard().setText(edit.text())
+
+        btn_copy = QPushButton("复制")
+        btn_copy.clicked.connect(copy_text)
+        btn_layout.addWidget(btn_copy)
+
+        btn_layout.addStretch()
+
+        btn_ok = QPushButton("确定")
+        btn_cancel = QPushButton("取消")
+        btn_layout.addWidget(btn_ok)
+        btn_layout.addWidget(btn_cancel)
+        layout.addLayout(btn_layout)
+
+        btn_ok.clicked.connect(dlg.accept)
+        btn_cancel.clicked.connect(dlg.reject)
+
+        if dlg.exec_() == QDialog.Accepted:
+            new_text = edit.text().strip()
+            if new_text and new_text != old_text:
+                group['drawn_items'][row] = new_text
+                self.updateDrawnList()
+                self.saveData()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if not hasattr(self, 'list_widget') or not hasattr(self, 'left_panel'):
@@ -780,6 +826,7 @@ class MainWindow(QMainWindow):
         self.drawn_list_widget.setFixedHeight(self.drawn_user_height)  # 初始高度
         self.drawn_list_widget.setMaximumHeight(900)                   # 硬上限，可删除，由拖动动态限制
         self.drawn_list_widget.itemSelectionChanged.connect(self.updateDrawnButtonsState)
+        self.drawn_list_widget.itemDoubleClicked.connect(self.editDrawnItem)
         self.drawn_list_widget.setStyleSheet("QListWidget { padding: 0px; }")
         bottom_layout.addWidget(self.drawn_list_widget)
 
