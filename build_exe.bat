@@ -17,12 +17,6 @@ if %errorlevel% neq 0 (
     )
 )
 
-:: 清理旧的打包文件（可选，按需取消注释）
-:: echo [*] 清理旧文件...
-:: if exist build rmdir /s /q build
-:: if exist dist rmdir /s /q dist
-:: if exist *.spec del /q *.spec
-
 echo [*] 开始打包，请稍候...
 pyinstaller --onefile --windowed --name="LuckyWheel" --add-data "HYWenHei-65W.ttf;." main.py
 
@@ -32,6 +26,11 @@ if %errorlevel% equ 0 (
     echo [√] 打包成功！
     echo exe 文件位于: %~dp0dist\LuckyWheel.exe
     echo ==========================================
+    echo.
+    echo [*] 清理临时文件...
+    if exist build rmdir /s /q build
+    if exist LuckyWheel.spec del /q LuckyWheel.spec
+    echo [√] 清理完成
 ) else (
     echo [X] 打包失败，请检查错误信息。
 )
