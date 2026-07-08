@@ -9,7 +9,7 @@ from PyQt6.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
                           QPropertyAnimation, QEasingCurve, QEvent)
 from PyQt6.QtGui import (QFontMetrics, QPainter, QColor, QFont, QPen,
                          QBrush, QPixmap, QPolygonF, QPainterPath,
-                         QFontDatabase, QAction)
+                         QFontDatabase, QAction, QCursor)
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
                              QMainWindow, QSpinBox, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
@@ -71,7 +71,7 @@ class SplitterHandle(QFrame):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            self._start_y = event.globalY()
+            self._start_y = QCursor.pos().y()
             self._start_height = self.list_widget.height()
             event.accept()
         else:
@@ -79,12 +79,15 @@ class SplitterHandle(QFrame):
 
     def mouseMoveEvent(self, event):
         if self._dragging:
-            delta = event.globalY() - self._start_y
-            new_height = self._start_height + delta
+            delta = QCursor.pos().y() - self._start_y
+            new_height = int(self._start_height + delta)
             min_h = 60
-            max_h = self.max_height_func()          # 动态计算
+            max_h = self.max_height_func()
             new_height = max(min_h, min(new_height, max_h))
             self.list_widget.setFixedHeight(new_height)
+            # 实时同步高度到 MainWindow，防止 resizeEvent 回路覆盖拖拽值
+            if self.set_height_callback:
+                self.set_height_callback(new_height)
             event.accept()
         else:
             super().mouseMoveEvent(event)
@@ -372,7 +375,7 @@ class WheelWidget(QWidget):
         side = min(self.width(), self.height())
         radius = side * 0.88 / 2.0
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
-        click_pos = event.pos()
+        click_pos = event.position()
         dist = math.hypot(click_pos.x() - center.x(), click_pos.y() - center.y())
         if dist <= radius * 0.15:
             self.startSpin()
