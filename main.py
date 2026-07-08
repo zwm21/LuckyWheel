@@ -1032,27 +1032,23 @@ class MainWindow(QMainWindow):
 
         right_layout.addLayout(wheel_font_layout)
 
-        # ===== 文字阴影（单独一行，靠右） =====
+        # ===== 背景主题 + 文字阴影（同行；背景左对齐转盘字体，阴影右侧） =====
         shadow_layout = QHBoxLayout()
-        shadow_layout.addStretch()
-        self.shadow_checkbox = QCheckBox("文字阴影")
-        self.shadow_checkbox.setChecked(self.shadow_enabled)
-        self.shadow_checkbox.stateChanged.connect(self.onShadowToggled)
-        shadow_layout.addWidget(self.shadow_checkbox)
-        right_layout.addLayout(shadow_layout)
-
-        # ===== 背景主题 =====
-        theme_layout = QHBoxLayout()
-        theme_layout.addStretch()
-        theme_layout.addWidget(QLabel("背景主题:"))
+        shadow_layout.addStretch(1000)
+        shadow_layout.addWidget(QLabel("背景主题:"))
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["白色", "黑色", "跟随系统"])
         theme_map = {"white": 0, "black": 1, "system": 2}
         self.theme_combo.setCurrentIndex(theme_map.get(self.theme, 0))
         self.theme_combo.setFixedWidth(100)
         self.theme_combo.currentIndexChanged.connect(self.onThemeChanged)
-        theme_layout.addWidget(self.theme_combo)
-        right_layout.addLayout(theme_layout)
+        shadow_layout.addWidget(self.theme_combo)
+        shadow_layout.addStretch(1)
+        self.shadow_checkbox = QCheckBox("文字阴影")
+        self.shadow_checkbox.setChecked(self.shadow_enabled)
+        self.shadow_checkbox.stateChanged.connect(self.onShadowToggled)
+        shadow_layout.addWidget(self.shadow_checkbox)
+        right_layout.addLayout(shadow_layout)
 
         # 使用 QSplitter 可拖拽调整左右比例
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
