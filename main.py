@@ -424,8 +424,8 @@ class MainWindow(QMainWindow):
         self.updateWheelFromCurrentGroup()
 
     def onShadowToggled(self, state):
-        enabled = (state == Qt.CheckState.Checked)
-        self.shadow_enabled = enabled         # 关键：更新成员变量
+        enabled = self.shadow_checkbox.isChecked()
+        self.shadow_enabled = enabled
         self.wheel.setShadowEnabled(enabled)
         self.saveData()
         
