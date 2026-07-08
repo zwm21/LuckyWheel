@@ -434,7 +434,7 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         if not self._theme_applied:
             self._theme_applied = True
-            self._applyTheme()
+            QTimer.singleShot(50, self._applyTheme)
 
     def onShadowToggled(self, state):
         enabled = self.shadow_checkbox.isChecked()
