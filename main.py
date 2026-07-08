@@ -898,24 +898,37 @@ class MainWindow(QMainWindow):
         self.wheel.spinFinished.connect(self.onSpinFinished)
         right_layout.addWidget(self.wheel)
 
-        # 按钮行：抽出 + 开始旋转
+        # ----- 单次抽取卡片 -----
+        single_frame = QFrame()
+        single_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; }")
+        single_layout = QVBoxLayout(single_frame)
+        single_layout.setContentsMargins(8, 6, 8, 6)
+        single_layout.setSpacing(6)
+
+        single_title = QLabel("单次抽取")
+        single_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+        single_layout.addWidget(single_title)
+
         spin_layout = QHBoxLayout()
-        spin_layout.setSpacing(5)  # 按钮之间的空隙（可根据喜好调整）
+        spin_layout.setSpacing(8)
 
         self.btn_extract = QPushButton("抽出")
-        self.btn_extract.setFixedHeight(40)          # 略小于开始按钮高度
-        self.btn_extract.setMaximumWidth(80)
+        self.btn_extract.setFixedHeight(38)
+        self.btn_extract.setMaximumWidth(72)
         self.btn_extract.clicked.connect(self.extractDrawnItem)
         spin_layout.addWidget(self.btn_extract)
 
-        self.btn_spin = QPushButton("开始旋转 (或点击转盘中心)")
-        self.btn_spin.setMinimumHeight(40)
+        self.btn_spin = QPushButton("开始旋转")
+        self.btn_spin.setMinimumHeight(38)
+        self.btn_spin.setStyleSheet("background-color: #FF6B6B; color: white; font-weight: bold;")
+        self.btn_spin.setToolTip("或点击转盘中心的 GO 按钮")
         self.btn_spin.clicked.connect(lambda: self.wheel.startSpin())
-        spin_layout.addWidget(self.btn_spin, 1)     # stretch=1，让开始按钮占满剩余空间
+        spin_layout.addWidget(self.btn_spin, 1)
 
-        right_layout.addLayout(spin_layout)
+        single_layout.addLayout(spin_layout)
+        right_layout.addWidget(single_frame)
 
-        # ----- 批量抽取（不放回）区域 -----
+        # ----- 批量抽取卡片 -----
         batch_frame = QFrame()
         batch_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
         batch_layout = QVBoxLayout(batch_frame)
