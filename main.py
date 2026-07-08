@@ -831,16 +831,24 @@ class MainWindow(QMainWindow):
         self.drawn_user_height = new_height
 
     def applyUIFont(self):
-        """应用界面字体到全局，并同步缩放特殊组件"""
-        base = 9
-        ratio = max(1, self.ui_font_size / base)
+        """应用界面字体到全局，所有控件统一字号"""
         font = QFont(self.ui_font_family, self.ui_font_size)
         QApplication.setFont(font)
         if hasattr(self, 'single_title'):
-            self.single_title.setFont(QFont(self.ui_font_family, int(12 * ratio), QFont.Weight.Bold))
-            self.batch_title.setFont(QFont(self.ui_font_family, int(12 * ratio), QFont.Weight.Bold))
-            self.batch_log_label.setFont(QFont(self.ui_font_family, int(11 * ratio)))
-            self.result_label.setFont(QFont(self.ui_font_family, int(18 * ratio), QFont.Weight.Bold))
+            # 卡片标题（粗体）
+            self.single_title.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
+            self.batch_title.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
+            self.result_label.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
+            # 普通文本
+            self.batch_log_label.setFont(QFont(self.ui_font_family, self.ui_font_size))
+            self.batch_count_label.setFont(QFont(self.ui_font_family, self.ui_font_size))
+            # 按钮
+            self.btn_extract.setFont(QFont(self.ui_font_family, self.ui_font_size))
+            self.btn_spin.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
+            self.btn_batch_spin.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
+            self.btn_stop_batch.setFont(QFont(self.ui_font_family, self.ui_font_size))
+            # 输入控件
+            self.batch_spinbox.setFont(QFont(self.ui_font_family, self.ui_font_size))
 
     def applyWheelFont(self):
         """应用转盘字体到 WheelWidget"""
@@ -1078,15 +1086,18 @@ class MainWindow(QMainWindow):
         self.wheel.spinFinished.connect(self.onSpinFinished)
         right_layout.addWidget(self.wheel)
 
+        # 将操作卡片下推，与底部字体设置区域对齐
+        right_layout.addStretch()
+
         # ----- 单次抽取卡片 -----
         self.single_frame = QFrame()
         self.single_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; }")
         single_layout = QVBoxLayout(self.single_frame)
-        single_layout.setContentsMargins(8, 6, 8, 6)
-        single_layout.setSpacing(6)
+        single_layout.setContentsMargins(8, 4, 8, 4)
+        single_layout.setSpacing(4)
 
         self.single_title = QLabel("单次抽取")
-        self.single_title.setFont(QFont(self.ui_font_family, 12, QFont.Weight.Bold))
+        self.single_title.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
         self.single_title.setStyleSheet("color: #555; background: transparent; border: none;")
         single_layout.addWidget(self.single_title)
 
@@ -1113,16 +1124,17 @@ class MainWindow(QMainWindow):
         self.batch_frame = QFrame()
         self.batch_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
         batch_layout = QVBoxLayout(self.batch_frame)
-        batch_layout.setContentsMargins(8, 6, 8, 6)
-        batch_layout.setSpacing(6)
+        batch_layout.setContentsMargins(8, 4, 8, 4)
+        batch_layout.setSpacing(4)
 
         self.batch_title = QLabel("不放回批量抽取")
-        self.batch_title.setFont(QFont(self.ui_font_family, 12, QFont.Weight.Bold))
+        self.batch_title.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
         self.batch_title.setStyleSheet("color: #555; background: transparent; border: none;")
         batch_layout.addWidget(self.batch_title)
 
         batch_ctrl_layout = QHBoxLayout()
-        batch_ctrl_layout.addWidget(QLabel("抽取次数:"))
+        self.batch_count_label = QLabel("抽取次数:")
+        batch_ctrl_layout.addWidget(self.batch_count_label)
         self.batch_spinbox = QSpinBox()
         self.batch_spinbox.setRange(1, 999)
         self.batch_spinbox.setValue(self.batch_spin_count)
@@ -1141,7 +1153,7 @@ class MainWindow(QMainWindow):
         batch_layout.addLayout(batch_ctrl_layout)
 
         self.batch_log_label = QLabel("")
-        self.batch_log_label.setFont(QFont(self.ui_font_family, 11))
+        self.batch_log_label.setFont(QFont(self.ui_font_family, self.ui_font_size))
         self.batch_log_label.setStyleSheet("color: #666; background: transparent; border: none;")
         self.batch_log_label.setWordWrap(True)
         batch_layout.addWidget(self.batch_log_label)
@@ -1150,7 +1162,7 @@ class MainWindow(QMainWindow):
 
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.result_label.setFont(QFont(self.ui_font_family, 18, QFont.Weight.Bold))
+        self.result_label.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
         self.result_label.setStyleSheet("color: #333;")
         right_layout.addWidget(self.result_label)
 
