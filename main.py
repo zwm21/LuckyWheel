@@ -401,6 +401,7 @@ class MainWindow(QMainWindow):
         # 批量抽取相关
         self.batch_remaining = 0        # 批量抽取剩余次数
         self.batch_results = []         # 批量抽取结果日志
+        self.batch_spin_count = 3       # 批量抽取默认次数
 
         # 数据文件路径（兼容打包后的 exe）
         if getattr(sys, 'frozen', False):
@@ -494,6 +495,11 @@ class MainWindow(QMainWindow):
         items = self.groups[self.current_group_index]['items']
         has_items = len(items) > 0
         self.btn_batch_spin.setEnabled(has_items and not self.wheel.spinning)
+
+    def _onBatchCountChanged(self, value):
+        """批量次数变更时持久化"""
+        self.batch_spin_count = value
+        self.saveData()
 
     def extractDrawnItem(self):
         """将抽签结果移出到抽出项目列表"""
@@ -705,6 +711,7 @@ class MainWindow(QMainWindow):
 
                 self.user_list_height = data.get('list_height', 200)
                 self.drawn_user_height = data.get('drawn_list_height', 120)
+                self.batch_spin_count = data.get('batch_spin_count', 3)
 
                 for group in self.groups:
                     if 'drawn_items' not in group:
@@ -735,7 +742,8 @@ class MainWindow(QMainWindow):
                 'shadow_enabled': self.shadow_enabled,
                 # 保存实际显示的高度（所见即所得）
                 'list_height': self.list_widget.height() if hasattr(self, 'list_widget') else self.user_list_height,
-                'drawn_list_height': self.drawn_list_widget.height() if hasattr(self, 'drawn_list_widget') else self.drawn_user_height
+                'drawn_list_height': self.drawn_list_widget.height() if hasattr(self, 'drawn_list_widget') else self.drawn_user_height,
+                'batch_spin_count': self.batch_spin_count
             }
             if self.window_geometry and len(self.window_geometry) == 4:
                 data['window_geometry'] = self.window_geometry
@@ -909,23 +917,22 @@ class MainWindow(QMainWindow):
 
         # ----- 批量抽取（不放回）区域 -----
         batch_frame = QFrame()
-        batch_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        batch_frame.setStyleSheet("QFrame { background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 6px; }")
+        batch_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
         batch_layout = QVBoxLayout(batch_frame)
-        batch_layout.setContentsMargins(8, 4, 8, 4)
-        batch_layout.setSpacing(4)
+        batch_layout.setContentsMargins(8, 6, 8, 6)
+        batch_layout.setSpacing(6)
 
-        batch_top_layout = QHBoxLayout()
-        batch_top_layout.addWidget(QLabel("不放回批量抽取:"))
-        batch_top_layout.addStretch()
-        batch_layout.addLayout(batch_top_layout)
+        batch_title = QLabel("不放回批量抽取")
+        batch_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+        batch_layout.addWidget(batch_title)
 
         batch_ctrl_layout = QHBoxLayout()
         batch_ctrl_layout.addWidget(QLabel("抽取次数:"))
         self.batch_spinbox = QSpinBox()
         self.batch_spinbox.setRange(1, 999)
-        self.batch_spinbox.setValue(5)
+        self.batch_spinbox.setValue(self.batch_spin_count)
         self.batch_spinbox.setFixedWidth(60)
+        self.batch_spinbox.valueChanged.connect(self._onBatchCountChanged)
         batch_ctrl_layout.addWidget(self.batch_spinbox)
         self.btn_batch_spin = QPushButton("开始批量抽取")
         self.btn_batch_spin.setMinimumHeight(32)
@@ -939,7 +946,7 @@ class MainWindow(QMainWindow):
         batch_layout.addLayout(batch_ctrl_layout)
 
         self.batch_log_label = QLabel("")
-        self.batch_log_label.setStyleSheet("color: #555; font-size: 11px; background: transparent; border: none;")
+        self.batch_log_label.setStyleSheet("color: #666; font-size: 11px; background: transparent; border: none;")
         self.batch_log_label.setWordWrap(True)
         batch_layout.addWidget(self.batch_log_label)
 
