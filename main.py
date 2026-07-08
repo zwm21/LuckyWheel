@@ -9,7 +9,7 @@ from PyQt6.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
                           QPropertyAnimation, QEasingCurve, QEvent)
 from PyQt6.QtGui import (QFontMetrics, QPainter, QColor, QFont, QPen,
                          QBrush, QPixmap, QPolygonF, QPainterPath,
-                         QFontDatabase, QAction, QCursor)
+                         QFontDatabase, QAction, QCursor, QPalette)
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
                              QMainWindow, QSpinBox, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
@@ -402,7 +402,7 @@ class MainWindow(QMainWindow):
         self.batch_remaining = 0        # 批量抽取剩余次数
         self.batch_results = []         # 批量抽取结果日志
         self.batch_spin_count = 3       # 批量抽取默认次数
-        self.theme = "white"            # 背景主题: white / black / system
+        self.theme = "light"           # 背景主题: light / dark / system
 
         # 数据文件路径（兼容打包后的 exe）
         if getattr(sys, 'frozen', False):
@@ -428,6 +428,7 @@ class MainWindow(QMainWindow):
         self.initUI()
         self.updateWheelFromCurrentGroup()
         self._applyTheme()
+        QApplication.styleHints().colorSchemeChanged.connect(self._onSystemThemeChanged)
 
     def onShadowToggled(self, state):
         enabled = self.shadow_checkbox.isChecked()
@@ -444,17 +445,102 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     # ================= 主题切换 =================
+    @staticmethod
+    def _darkPalette():
+        p = QPalette()
+        p.setColor(QPalette.ColorRole.Window,          QColor(53, 53, 53))
+        p.setColor(QPalette.ColorRole.WindowText,      QColor(255, 255, 255))
+        p.setColor(QPalette.ColorRole.Base,            QColor(35, 35, 35))
+        p.setColor(QPalette.ColorRole.AlternateBase,   QColor(53, 53, 53))
+        p.setColor(QPalette.ColorRole.ToolTipBase,     QColor(25, 25, 25))
+        p.setColor(QPalette.ColorRole.ToolTipText,     QColor(255, 255, 255))
+        p.setColor(QPalette.ColorRole.Text,            QColor(255, 255, 255))
+        p.setColor(QPalette.ColorRole.Button,          QColor(53, 53, 53))
+        p.setColor(QPalette.ColorRole.ButtonText,      QColor(255, 255, 255))
+        p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 0, 0))
+        p.setColor(QPalette.ColorRole.Link,            QColor(42, 130, 218))
+        p.setColor(QPalette.ColorRole.Highlight,       QColor(42, 130, 218))
+        p.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+        p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(127, 127, 127))
+        p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,       QColor(127, 127, 127))
+        p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(127, 127, 127))
+        return p
+
+    def _isSystemDark(self):
+        return QApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+
     def _applyTheme(self):
-        """只改变主窗口背景颜色，不动其他 UI 样式"""
-        themes_bg = {"white": "#FFFFFF", "black": "#2B2B2B", "system": None}
-        bg = themes_bg.get(self.theme)
-        if bg is None:
-            self.setStyleSheet("")
+        """浅色=默认 / 深色=暗色调板+覆盖内联样式 / 跟随系统=检测"""
+        if self.theme == "dark" or (self.theme == "system" and self._isSystemDark()):
+            QApplication.instance().setPalette(self._darkPalette())
+            self.setStyleSheet("""
+                QComboBox, QFontComboBox, QSpinBox, QLineEdit {
+                    background-color: #454545;
+                    color: #E0E0E0;
+                    border: 1px solid #555;
+                }
+                QComboBox QAbstractItemView, QFontComboBox QAbstractItemView {
+                    background-color: #454545;
+                    color: #E0E0E0;
+                    selection-background-color: #555;
+                }
+                QListWidget {
+                    background-color: #3A3A3A;
+                    color: #E0E0E0;
+                    border: 1px solid #555;
+                }
+                QListWidget::item:selected {
+                    background-color: #555;
+                }
+                QCheckBox::indicator {
+                    background-color: #454545;
+                    border: 1px solid #777;
+                }
+            """)
+            if hasattr(self, 'single_frame'):
+                self.single_frame.setStyleSheet(
+                    "QFrame { background: #3D3D3D; border: none; border-radius: 4px; }")
+                self.single_title.setStyleSheet(
+                    "font-weight: bold; font-size: 12px; color: #AAA; background: transparent; border: none;")
+                self.batch_frame.setStyleSheet(
+                    "QFrame { background: #3D3D3D; border: none; border-radius: 4px; padding: 4px; }")
+                self.batch_title.setStyleSheet(
+                    "font-weight: bold; font-size: 12px; color: #AAA; background: transparent; border: none;")
+                self.batch_log_label.setStyleSheet(
+                    "color: #AAA; font-size: 11px; background: transparent; border: none;")
+                self.result_label.setStyleSheet(
+                    "font-size: 18px; font-weight: bold; color: #E0E0E0;")
+                self.splitter_handle.setStyleSheet(
+                    "QFrame { background: #4A4A4A; border: 1px solid #555; }")
+                self.drawn_splitter_handle.setStyleSheet(
+                    "QFrame { background: #4A4A4A; border: 1px solid #555; }")
         else:
-            self.setStyleSheet(f"QMainWindow {{ background-color: {bg}; }}")
+            QApplication.instance().setPalette(QApplication.instance().style().standardPalette())
+            self.setStyleSheet("")
+            if hasattr(self, 'single_frame'):
+                self.single_frame.setStyleSheet(
+                    "QFrame { background: #f8f7f5; border: none; border-radius: 4px; }")
+                self.single_title.setStyleSheet(
+                    "font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+                self.batch_frame.setStyleSheet(
+                    "QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
+                self.batch_title.setStyleSheet(
+                    "font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+                self.batch_log_label.setStyleSheet(
+                    "color: #666; font-size: 11px; background: transparent; border: none;")
+                self.result_label.setStyleSheet(
+                    "font-size: 18px; font-weight: bold; color: #333;")
+                self.splitter_handle.setStyleSheet(
+                    "QFrame { border: 1px solid #ccc; background: #eee; }")
+                self.drawn_splitter_handle.setStyleSheet(
+                    "QFrame { border: 1px solid #ccc; background: #eee; }")
+
+    def _onSystemThemeChanged(self):
+        if self.theme == "system":
+            self._applyTheme()
 
     def onThemeChanged(self, index):
-        themes = ["white", "black", "system"]
+        themes = ["light", "dark", "system"]
         if 0 <= index < len(themes):
             self.theme = themes[index]
             self._applyTheme()
@@ -731,7 +817,7 @@ class MainWindow(QMainWindow):
                 self.user_list_height = data.get('list_height', 200)
                 self.drawn_user_height = data.get('drawn_list_height', 120)
                 self.batch_spin_count = data.get('batch_spin_count', 3)
-                self.theme = data.get('theme', 'white')
+                self.theme = data.get('theme', 'light')
 
                 for group in self.groups:
                     if 'drawn_items' not in group:
@@ -920,15 +1006,15 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.wheel)
 
         # ----- 单次抽取卡片 -----
-        single_frame = QFrame()
-        single_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; }")
-        single_layout = QVBoxLayout(single_frame)
+        self.single_frame = QFrame()
+        self.single_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; }")
+        single_layout = QVBoxLayout(self.single_frame)
         single_layout.setContentsMargins(8, 6, 8, 6)
         single_layout.setSpacing(6)
 
-        single_title = QLabel("单次抽取")
-        single_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
-        single_layout.addWidget(single_title)
+        self.single_title = QLabel("单次抽取")
+        self.single_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+        single_layout.addWidget(self.single_title)
 
         spin_layout = QHBoxLayout()
         spin_layout.setSpacing(8)
@@ -947,18 +1033,18 @@ class MainWindow(QMainWindow):
         spin_layout.addWidget(self.btn_spin, 1)
 
         single_layout.addLayout(spin_layout)
-        right_layout.addWidget(single_frame)
+        right_layout.addWidget(self.single_frame)
 
         # ----- 批量抽取卡片 -----
-        batch_frame = QFrame()
-        batch_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
-        batch_layout = QVBoxLayout(batch_frame)
+        self.batch_frame = QFrame()
+        self.batch_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
+        batch_layout = QVBoxLayout(self.batch_frame)
         batch_layout.setContentsMargins(8, 6, 8, 6)
         batch_layout.setSpacing(6)
 
-        batch_title = QLabel("不放回批量抽取")
-        batch_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
-        batch_layout.addWidget(batch_title)
+        self.batch_title = QLabel("不放回批量抽取")
+        self.batch_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+        batch_layout.addWidget(self.batch_title)
 
         batch_ctrl_layout = QHBoxLayout()
         batch_ctrl_layout.addWidget(QLabel("抽取次数:"))
@@ -984,7 +1070,7 @@ class MainWindow(QMainWindow):
         self.batch_log_label.setWordWrap(True)
         batch_layout.addWidget(self.batch_log_label)
 
-        right_layout.addWidget(batch_frame)
+        right_layout.addWidget(self.batch_frame)
 
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1037,8 +1123,8 @@ class MainWindow(QMainWindow):
         shadow_layout.addStretch(1000)
         shadow_layout.addWidget(QLabel("背景主题:"))
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["白色", "黑色", "跟随系统"])
-        theme_map = {"white": 0, "black": 1, "system": 2}
+        self.theme_combo.addItems(["浅色", "深色", "跟随系统"])
+        theme_map = {"light": 0, "dark": 1, "system": 2}
         self.theme_combo.setCurrentIndex(theme_map.get(self.theme, 0))
         self.theme_combo.setFixedWidth(100)
         self.theme_combo.currentIndexChanged.connect(self.onThemeChanged)
