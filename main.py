@@ -427,8 +427,14 @@ class MainWindow(QMainWindow):
 
         self.initUI()
         self.updateWheelFromCurrentGroup()
-        self._applyTheme()
         QApplication.styleHints().colorSchemeChanged.connect(self._onSystemThemeChanged)
+        self._theme_applied = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._theme_applied:
+            self._theme_applied = True
+            self._applyTheme()
 
     def onShadowToggled(self, state):
         enabled = self.shadow_checkbox.isChecked()
