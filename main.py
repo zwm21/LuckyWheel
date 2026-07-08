@@ -402,6 +402,7 @@ class MainWindow(QMainWindow):
         self.batch_remaining = 0        # 批量抽取剩余次数
         self.batch_results = []         # 批量抽取结果日志
         self.batch_spin_count = 3       # 批量抽取默认次数
+        self.theme = "white"            # 背景主题: white / black / system
 
         # 数据文件路径（兼容打包后的 exe）
         if getattr(sys, 'frozen', False):
@@ -426,6 +427,7 @@ class MainWindow(QMainWindow):
 
         self.initUI()
         self.updateWheelFromCurrentGroup()
+        self._applyTheme()
 
     def onShadowToggled(self, state):
         enabled = self.shadow_checkbox.isChecked()
@@ -440,6 +442,23 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self.onItemsReordered)
             return False
         return super().eventFilter(obj, event)
+
+    # ================= 主题切换 =================
+    def _applyTheme(self):
+        """只改变主窗口背景颜色，不动其他 UI 样式"""
+        themes_bg = {"white": "#FFFFFF", "black": "#2B2B2B", "system": None}
+        bg = themes_bg.get(self.theme)
+        if bg is None:
+            self.setStyleSheet("")
+        else:
+            self.setStyleSheet(f"QMainWindow {{ background-color: {bg}; }}")
+
+    def onThemeChanged(self, index):
+        themes = ["white", "black", "system"]
+        if 0 <= index < len(themes):
+            self.theme = themes[index]
+            self._applyTheme()
+            self.saveData()
 
     def editAllItems(self):
         """编辑当前分组的所有项目（每行一个）"""
@@ -712,6 +731,7 @@ class MainWindow(QMainWindow):
                 self.user_list_height = data.get('list_height', 200)
                 self.drawn_user_height = data.get('drawn_list_height', 120)
                 self.batch_spin_count = data.get('batch_spin_count', 3)
+                self.theme = data.get('theme', 'white')
 
                 for group in self.groups:
                     if 'drawn_items' not in group:
@@ -743,7 +763,8 @@ class MainWindow(QMainWindow):
                 # 保存实际显示的高度（所见即所得）
                 'list_height': self.list_widget.height() if hasattr(self, 'list_widget') else self.user_list_height,
                 'drawn_list_height': self.drawn_list_widget.height() if hasattr(self, 'drawn_list_widget') else self.drawn_user_height,
-                'batch_spin_count': self.batch_spin_count
+                'batch_spin_count': self.batch_spin_count,
+                'theme': self.theme
             }
             if self.window_geometry and len(self.window_geometry) == 4:
                 data['window_geometry'] = self.window_geometry
@@ -1019,6 +1040,19 @@ class MainWindow(QMainWindow):
         self.shadow_checkbox.stateChanged.connect(self.onShadowToggled)
         shadow_layout.addWidget(self.shadow_checkbox)
         right_layout.addLayout(shadow_layout)
+
+        # ===== 背景主题 =====
+        theme_layout = QHBoxLayout()
+        theme_layout.addStretch()
+        theme_layout.addWidget(QLabel("背景主题:"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["白色", "黑色", "跟随系统"])
+        theme_map = {"white": 0, "black": 1, "system": 2}
+        self.theme_combo.setCurrentIndex(theme_map.get(self.theme, 0))
+        self.theme_combo.setFixedWidth(100)
+        self.theme_combo.currentIndexChanged.connect(self.onThemeChanged)
+        theme_layout.addWidget(self.theme_combo)
+        right_layout.addLayout(theme_layout)
 
         # 使用 QSplitter 可拖拽调整左右比例
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
