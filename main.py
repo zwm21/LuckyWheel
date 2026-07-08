@@ -478,6 +478,8 @@ class MainWindow(QMainWindow):
                     background-color: #454545;
                     color: #E0E0E0;
                     border: 1px solid #555;
+                    border-radius: 4px;
+                    padding: 2px 6px;
                 }
                 QComboBox QAbstractItemView, QFontComboBox QAbstractItemView {
                     background-color: #454545;
@@ -488,6 +490,7 @@ class MainWindow(QMainWindow):
                     background-color: #3A3A3A;
                     color: #E0E0E0;
                     border: 1px solid #555;
+                    border-radius: 4px;
                 }
                 QListWidget::item:selected {
                     background-color: #555;
@@ -495,6 +498,7 @@ class MainWindow(QMainWindow):
                 QCheckBox::indicator {
                     background-color: #454545;
                     border: 1px solid #777;
+                    border-radius: 3px;
                 }
             """)
             if hasattr(self, 'single_frame'):
