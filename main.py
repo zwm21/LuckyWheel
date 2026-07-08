@@ -434,7 +434,41 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         if not self._theme_applied:
             self._theme_applied = True
-            QTimer.singleShot(50, self._applyTheme)
+            QTimer.singleShot(0, self._applyTheme)
+
+    # ================= 下方控件颜色初始化 =================
+    def _initLowerAreaColors(self, is_dark):
+        """为抽出项目列表及其视口显式设置调色板，解决深层嵌套时调色板不传播的问题。
+        
+        Args:
+            is_dark: True=深色主题，False=浅色主题
+        """
+        try:
+            palette = self._darkPalette() if is_dark else self._lightPalette()
+        except Exception:
+            return  # 调色板构造失败，静默退出
+
+        widgets = []
+        try:
+            if hasattr(self, 'drawn_list_widget') and self.drawn_list_widget is not None:
+                widgets.append(self.drawn_list_widget)
+        except (RuntimeError, AttributeError):
+            pass
+        try:
+            if hasattr(self, 'list_widget') and self.list_widget is not None:
+                widgets.append(self.list_widget)
+        except (RuntimeError, AttributeError):
+            pass
+
+        for w in widgets:
+            try:
+                w.setPalette(palette)
+                vp = w.viewport()
+                if vp is not None:
+                    vp.setPalette(palette)
+                    vp.setAutoFillBackground(True)
+            except (RuntimeError, AttributeError):
+                continue
 
     def onShadowToggled(self, state):
         enabled = self.shadow_checkbox.isChecked()
@@ -544,6 +578,7 @@ class MainWindow(QMainWindow):
                     "QFrame { background: #4A4A4A; border: 1px solid #555; }")
                 self.drawn_splitter_handle.setStyleSheet(
                     "QFrame { background: #4A4A4A; border: 1px solid #555; }")
+            self._initLowerAreaColors(is_dark=True)
         else:
             QApplication.instance().setPalette(self._lightPalette())
             self.setStyleSheet("")
@@ -564,6 +599,7 @@ class MainWindow(QMainWindow):
                     "QFrame { border: 1px solid #ccc; background: #eee; }")
                 self.drawn_splitter_handle.setStyleSheet(
                     "QFrame { border: 1px solid #ccc; background: #eee; }")
+            self._initLowerAreaColors(is_dark=False)
 
     def _onSystemThemeChanged(self):
         if self.theme == "system":
