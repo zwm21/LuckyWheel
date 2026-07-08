@@ -466,11 +466,30 @@ class MainWindow(QMainWindow):
         p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(127, 127, 127))
         return p
 
+    @staticmethod
+    def _lightPalette():
+        """显式浅色调色板，不依赖系统当前主题"""
+        p = QPalette()
+        p.setColor(QPalette.ColorRole.Window,          QColor(240, 240, 240))
+        p.setColor(QPalette.ColorRole.WindowText,      QColor(0, 0, 0))
+        p.setColor(QPalette.ColorRole.Base,            QColor(255, 255, 255))
+        p.setColor(QPalette.ColorRole.AlternateBase,   QColor(245, 245, 245))
+        p.setColor(QPalette.ColorRole.ToolTipBase,     QColor(255, 255, 220))
+        p.setColor(QPalette.ColorRole.ToolTipText,     QColor(0, 0, 0))
+        p.setColor(QPalette.ColorRole.Text,            QColor(0, 0, 0))
+        p.setColor(QPalette.ColorRole.Button,          QColor(240, 240, 240))
+        p.setColor(QPalette.ColorRole.ButtonText,      QColor(0, 0, 0))
+        p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 0, 0))
+        p.setColor(QPalette.ColorRole.Link,            QColor(42, 130, 218))
+        p.setColor(QPalette.ColorRole.Highlight,       QColor(42, 130, 218))
+        p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+        return p
+
     def _isSystemDark(self):
         return QApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
 
     def _applyTheme(self):
-        """浅色=默认 / 深色=暗色调板+覆盖内联样式 / 跟随系统=检测"""
+        """浅色=显式浅色调板 / 深色=暗色调板+QSS / 跟随系统=检测"""
         if self.theme == "dark" or (self.theme == "system" and self._isSystemDark()):
             QApplication.instance().setPalette(self._darkPalette())
             self.setStyleSheet("""
@@ -520,7 +539,7 @@ class MainWindow(QMainWindow):
                 self.drawn_splitter_handle.setStyleSheet(
                     "QFrame { background: #4A4A4A; border: 1px solid #555; }")
         else:
-            QApplication.instance().setPalette(QApplication.instance().style().standardPalette())
+            QApplication.instance().setPalette(self._lightPalette())
             self.setStyleSheet("")
             if hasattr(self, 'single_frame'):
                 self.single_frame.setStyleSheet(
