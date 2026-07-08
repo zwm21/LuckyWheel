@@ -479,7 +479,6 @@ class MainWindow(QMainWindow):
                     color: #E0E0E0;
                     border: 1px solid #555;
                     border-radius: 4px;
-                    padding: 2px 6px;
                 }
                 QComboBox QAbstractItemView, QFontComboBox QAbstractItemView {
                     background-color: #454545;
@@ -496,6 +495,8 @@ class MainWindow(QMainWindow):
                     background-color: #555;
                 }
                 QCheckBox::indicator {
+                    width: 16px;
+                    height: 16px;
                     background-color: #454545;
                     border: 1px solid #777;
                     border-radius: 3px;
