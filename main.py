@@ -531,15 +531,15 @@ class MainWindow(QMainWindow):
                 self.single_frame.setStyleSheet(
                     "QFrame { background: #3D3D3D; border: none; border-radius: 4px; }")
                 self.single_title.setStyleSheet(
-                    "font-weight: bold; font-size: 12px; color: #AAA; background: transparent; border: none;")
+                    "color: #AAA; background: transparent; border: none;")
                 self.batch_frame.setStyleSheet(
                     "QFrame { background: #3D3D3D; border: none; border-radius: 4px; padding: 4px; }")
                 self.batch_title.setStyleSheet(
-                    "font-weight: bold; font-size: 12px; color: #AAA; background: transparent; border: none;")
+                    "color: #AAA; background: transparent; border: none;")
                 self.batch_log_label.setStyleSheet(
-                    "color: #AAA; font-size: 11px; background: transparent; border: none;")
+                    "color: #AAA; background: transparent; border: none;")
                 self.result_label.setStyleSheet(
-                    "font-size: 18px; font-weight: bold; color: #E0E0E0;")
+                    "font-weight: bold; color: #E0E0E0;")
                 self.splitter_handle.setStyleSheet(
                     "QFrame { background: #4A4A4A; border: 1px solid #555; }")
                 self.drawn_splitter_handle.setStyleSheet(
@@ -551,15 +551,15 @@ class MainWindow(QMainWindow):
                 self.single_frame.setStyleSheet(
                     "QFrame { background: #f8f7f5; border: none; border-radius: 4px; }")
                 self.single_title.setStyleSheet(
-                    "font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+                    "color: #555; background: transparent; border: none;")
                 self.batch_frame.setStyleSheet(
                     "QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
                 self.batch_title.setStyleSheet(
-                    "font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+                    "color: #555; background: transparent; border: none;")
                 self.batch_log_label.setStyleSheet(
-                    "color: #666; font-size: 11px; background: transparent; border: none;")
+                    "color: #666; background: transparent; border: none;")
                 self.result_label.setStyleSheet(
-                    "font-size: 18px; font-weight: bold; color: #333;")
+                    "font-weight: bold; color: #333;")
                 self.splitter_handle.setStyleSheet(
                     "QFrame { border: 1px solid #ccc; background: #eee; }")
                 self.drawn_splitter_handle.setStyleSheet(
@@ -795,9 +795,16 @@ class MainWindow(QMainWindow):
         self.drawn_user_height = new_height
 
     def applyUIFont(self):
-        """应用界面字体到全局"""
+        """应用界面字体到全局，并同步缩放特殊组件"""
+        base = 9
+        ratio = max(1, self.ui_font_size / base)
         font = QFont(self.ui_font_family, self.ui_font_size)
         QApplication.setFont(font)
+        if hasattr(self, 'single_title'):
+            self.single_title.setFont(QFont(self.ui_font_family, int(12 * ratio), QFont.Weight.Bold))
+            self.batch_title.setFont(QFont(self.ui_font_family, int(12 * ratio), QFont.Weight.Bold))
+            self.batch_log_label.setFont(QFont(self.ui_font_family, int(11 * ratio)))
+            self.result_label.setFont(QFont(self.ui_font_family, int(18 * ratio), QFont.Weight.Bold))
 
     def applyWheelFont(self):
         """应用转盘字体到 WheelWidget"""
@@ -1043,7 +1050,8 @@ class MainWindow(QMainWindow):
         single_layout.setSpacing(6)
 
         self.single_title = QLabel("单次抽取")
-        self.single_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+        self.single_title.setFont(QFont(self.ui_font_family, 12, QFont.Weight.Bold))
+        self.single_title.setStyleSheet("color: #555; background: transparent; border: none;")
         single_layout.addWidget(self.single_title)
 
         spin_layout = QHBoxLayout()
@@ -1073,7 +1081,8 @@ class MainWindow(QMainWindow):
         batch_layout.setSpacing(6)
 
         self.batch_title = QLabel("不放回批量抽取")
-        self.batch_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #555; background: transparent; border: none;")
+        self.batch_title.setFont(QFont(self.ui_font_family, 12, QFont.Weight.Bold))
+        self.batch_title.setStyleSheet("color: #555; background: transparent; border: none;")
         batch_layout.addWidget(self.batch_title)
 
         batch_ctrl_layout = QHBoxLayout()
@@ -1096,7 +1105,8 @@ class MainWindow(QMainWindow):
         batch_layout.addLayout(batch_ctrl_layout)
 
         self.batch_log_label = QLabel("")
-        self.batch_log_label.setStyleSheet("color: #666; font-size: 11px; background: transparent; border: none;")
+        self.batch_log_label.setFont(QFont(self.ui_font_family, 11))
+        self.batch_log_label.setStyleSheet("color: #666; background: transparent; border: none;")
         self.batch_log_label.setWordWrap(True)
         batch_layout.addWidget(self.batch_log_label)
 
@@ -1104,9 +1114,8 @@ class MainWindow(QMainWindow):
 
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.result_label.setStyleSheet(
-            "font-size: 18px; font-weight: bold; color: #333;"
-        )
+        self.result_label.setFont(QFont(self.ui_font_family, 18, QFont.Weight.Bold))
+        self.result_label.setStyleSheet("color: #333;")
         right_layout.addWidget(self.result_label)
 
 
