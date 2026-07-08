@@ -5,13 +5,17 @@ import random
 import math
 import os
 
-from PyQt5.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
+from PyQt6.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
                           QPropertyAnimation, QEasingCurve, QEvent)
-from PyQt5.QtGui import QFontMetrics, QPainter, QColor, QFont, QPen, QBrush, QPixmap, QPolygonF, QPainterPath, QFontDatabase
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame, QMainWindow, QSpinBox, QWidget, QVBoxLayout,
+from PyQt6.QtGui import (QFontMetrics, QPainter, QColor, QFont, QPen,
+                         QBrush, QPixmap, QPolygonF, QPainterPath,
+                         QFontDatabase, QAction)
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
+                             QMainWindow, QSpinBox, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
-                             QListWidget, QListWidgetItem, QComboBox, QFileDialog,
-                             QMessageBox, QSplitter, QInputDialog, QSizePolicy,
+                             QListWidget, QListWidgetItem, QComboBox,
+                             QFileDialog, QMessageBox, QSplitter,
+                             QInputDialog, QSizePolicy,
                              QAbstractItemView, QFontComboBox)
 
 # 转盘扇区颜色池
@@ -55,17 +59,17 @@ class SplitterHandle(QFrame):
         self.set_height_callback = set_height_callback
         self.left_panel = left_panel
         self.max_height_func = max_height_func or (lambda: self.left_panel.height() - 200)
-        self.setFrameShape(QFrame.HLine)
-        self.setFrameShadow(QFrame.Plain)
+        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShadow(QFrame.Shadow.Plain)
         self.setStyleSheet("QFrame { border: 1px solid #ccc; background: #eee; }")
-        self.setCursor(Qt.SplitVCursor)
+        self.setCursor(Qt.CursorShape.SplitVCursor)
         self.setFixedHeight(6)
         self._dragging = False
         self._start_y = 0
         self._start_height = 0
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
             self._start_y = event.globalY()
             self._start_height = self.list_widget.height()
@@ -113,17 +117,14 @@ class WheelWidget(QWidget):
         self.friction = 0.98         # 每帧速度衰减系数
         self.timer_interval = 30     # 毫秒
         self.result_text = ""
-        self.ui_font_family = "汉仪文黑-65W"
-        self.ui_font_size = 9
-        self.wheel_font_family = "汉仪文黑-65W"
-        self.wheel_font_size = 0          # 0 表示自动计算字号
+        self.font_family = "汉仪文黑-65W"
         self.shadow_enabled = True
-        self.cached_pixmap = None   # 离屏转盘图像（不含旋转）
-        self.cached_size = None     # 上次生成缓存时的 widget 尺寸
-        self.font_size = 0          # 0=自动，>0=固定像素大小
+        self.cached_pixmap = None    # 离屏转盘图像（不含旋转）
+        self.cached_size = None      # 上次生成缓存时的 widget 尺寸
+        self.font_size = 0           # 0=自动，>0=固定像素大小
 
         self.setMinimumSize(350, 350)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def setFontSize(self, size):
         """设置转盘文字固定大小，0 为自动"""
@@ -146,10 +147,10 @@ class WheelWidget(QWidget):
     
         # 创建正方形画布，避免圆形被拉伸
         pixmap = QPixmap(side, side)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
     
         painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     
         # ---------- 绘制扇形（无旋转） ----------
         num = len(self.items)
@@ -161,7 +162,7 @@ class WheelWidget(QWidget):
             span_angle = sector_span
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
             painter.setBrush(QBrush(color))
-            painter.setPen(QPen(Qt.white, 2))
+            painter.setPen(QPen(Qt.GlobalColor.white, 2))
             path = QPainterPath()
             path.moveTo(0, 0)
             path.arcTo(QRectF(-radius, -radius, radius * 2, radius * 2),
@@ -214,12 +215,12 @@ class WheelWidget(QWidget):
 
             # 阴影与主体文字（阈值与原版相同的 > 50）
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
-            text_color = Qt.black if color.lightness() > 50 else Qt.white
+            text_color = Qt.GlobalColor.black if color.lightness() > 50 else Qt.GlobalColor.white
             if self.shadow_enabled:
                 painter.setPen(QColor(0, 0, 0, 120))
-                painter.drawText(rect.translated(1, 1), Qt.AlignCenter, item)
+                painter.drawText(rect.translated(1, 1), Qt.AlignmentFlag.AlignCenter, item)
             painter.setPen(text_color)
-            painter.drawText(rect, Qt.AlignCenter, item)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, item)
 
             painter.restore()
     
@@ -301,12 +302,12 @@ class WheelWidget(QWidget):
     def paintEvent(self, event):
         """使用离屏缓存绘制，大幅提升大量项目时的旋转性能"""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         side = min(self.width(), self.height())
     
         if not self.items:
-            painter.setPen(QPen(Qt.black, 1))
-            painter.drawText(self.rect(), Qt.AlignCenter, "请添加项目")
+            painter.setPen(QPen(Qt.GlobalColor.black, 1))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "请添加项目")
             return
     
         # 需要重建缓存的情况
@@ -324,7 +325,7 @@ class WheelWidget(QWidget):
         painter.save()
         painter.translate(center)
         painter.rotate(self.rotation)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.drawPixmap(-pixmap_center, self.cached_pixmap)
         painter.restore()
     
@@ -334,17 +335,17 @@ class WheelWidget(QWidget):
         painter.save()
         painter.translate(center)
         painter.setBrush(QBrush(QColor("#333333")))
-        painter.setPen(QPen(Qt.white, 2))
+        painter.setPen(QPen(Qt.GlobalColor.white, 2))
         painter.drawEllipse(QPointF(0, 0), radius * 0.15, radius * 0.15)
         painter.setBrush(QBrush(QColor("#555555")))
         painter.drawEllipse(QPointF(0, 0), radius * 0.1, radius * 0.1)
-        painter.setPen(QPen(Qt.white, 1))
+        painter.setPen(QPen(Qt.GlobalColor.white, 1))
         font = QFont(self.font_family)
         font.setBold(True)
         font.setPixelSize(int(radius * 0.08))
         painter.setFont(font)
         painter.drawText(QRectF(-radius * 0.1, -radius * 0.1, radius * 0.2, radius * 0.2),
-                         Qt.AlignCenter, "GO")
+                         Qt.AlignmentFlag.AlignCenter, "GO")
         painter.restore()
     
         # 指针
@@ -360,7 +361,7 @@ class WheelWidget(QWidget):
             QPointF(pointer_tip.x() + pointer_size / 2, pointer_tip.y() - pointer_size)
         ])
         painter.setBrush(QBrush(QColor("#FF0000")))
-        painter.setPen(QPen(Qt.white, 2))
+        painter.setPen(QPen(Qt.GlobalColor.white, 2))
         painter.drawPolygon(pointer)
         painter.restore()
 
@@ -394,6 +395,10 @@ class MainWindow(QMainWindow):
         self.user_list_height = 200
         self.drawn_user_height = 120   # 抽出列表默认高度
 
+        # 批量抽取相关
+        self.batch_remaining = 0        # 批量抽取剩余次数
+        self.batch_results = []         # 批量抽取结果日志
+
         # 数据文件路径（兼容打包后的 exe）
         if getattr(sys, 'frozen', False):
             app_dir = os.path.dirname(sys.executable)
@@ -419,14 +424,14 @@ class MainWindow(QMainWindow):
         self.updateWheelFromCurrentGroup()
 
     def onShadowToggled(self, state):
-        enabled = (state == Qt.Checked)
+        enabled = (state == Qt.CheckState.Checked)
         self.shadow_enabled = enabled         # 关键：更新成员变量
         self.wheel.setShadowEnabled(enabled)
         self.saveData()
         
     def eventFilter(self, obj, event):
         # 监听列表视口的拖放事件
-        if obj is self.list_widget.viewport() and event.type() == QEvent.Drop:
+        if obj is self.list_widget.viewport() and event.type() == QEvent.Type.Drop:
             # 拖放完成后，使用 QTimer 确保列表数据已更新
             QTimer.singleShot(0, self.onItemsReordered)
             return False
@@ -477,6 +482,15 @@ class MainWindow(QMainWindow):
             self.btn_extract.setEnabled(True)
         else:
             self.btn_extract.setEnabled(False)
+
+    def _updateBatchButtonState(self):
+        """控制批量抽取按钮的可用状态"""
+        if not self.groups or self.current_group_index < 0:
+            self.btn_batch_spin.setEnabled(False)
+            return
+        items = self.groups[self.current_group_index]['items']
+        has_items = len(items) > 0
+        self.btn_batch_spin.setEnabled(has_items and not self.wheel.spinning)
 
     def extractDrawnItem(self):
         """将抽签结果移出到抽出项目列表"""
@@ -602,7 +616,7 @@ class MainWindow(QMainWindow):
         btn_ok.clicked.connect(dlg.accept)
         btn_cancel.clicked.connect(dlg.reject)
 
-        if dlg.exec_() == QDialog.Accepted:
+        if dlg.exec() == QDialog.DialogCode.Accepted:
             new_text = edit.text().strip()
             if new_text and new_text != old_text:
                 group['drawn_items'][row] = new_text
@@ -698,7 +712,10 @@ class MainWindow(QMainWindow):
         except (FileNotFoundError, json.JSONDecodeError):
             self.groups = [{'name': '默认分组', 'items': ['选项1', '选项2', '选项3'], 'drawn_items': []}]
             self.current_group_index = 0
-            self.font_family = "汉仪文黑-65W"
+            self.ui_font_family = "Microsoft YaHei"
+            self.wheel_font_family = "Microsoft YaHei"
+            self.ui_font_size = 9
+            self.wheel_font_size = 0
             self.shadow_enabled = True
             self.saveData()
             self.window_geometry = None
@@ -745,7 +762,7 @@ class MainWindow(QMainWindow):
         group_layout.addWidget(QLabel("分组:"))
         self.group_combo = QComboBox()
         self.group_combo.currentIndexChanged.connect(self.onGroupChanged)
-        self.group_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.group_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         group_layout.addWidget(self.group_combo)
         btn_add_group = QPushButton("+")
         btn_add_group.setMaximumWidth(30)
@@ -765,7 +782,7 @@ class MainWindow(QMainWindow):
 
         # 可拖拽高度的项目列表
         self.list_widget = QListWidget()
-        self.list_widget.setDragDropMode(QAbstractItemView.InternalMove)
+        self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.list_widget.model().layoutChanged.connect(self.onItemsReordered)
         self.list_widget.itemDoubleClicked.connect(self.editItem)
         self.list_widget.viewport().installEventFilter(self)
@@ -786,7 +803,7 @@ class MainWindow(QMainWindow):
 
         # ===== 下方固定区域（按钮 + 抽出项目 + 抽出操作） =====
         self.bottom_widget = QWidget()
-        self.bottom_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.bottom_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         bottom_layout = QVBoxLayout(self.bottom_widget)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(4)
@@ -842,7 +859,7 @@ class MainWindow(QMainWindow):
 
         # 抽出操作按钮（固定高度）
         drawn_btn_widget = QWidget()
-        drawn_btn_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        drawn_btn_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         drawn_btn_layout = QHBoxLayout(drawn_btn_widget)
         drawn_btn_layout.setContentsMargins(0, 0, 0, 0)
         self.btn_return_drawn = QPushButton("返回项目")
@@ -886,10 +903,47 @@ class MainWindow(QMainWindow):
         spin_layout.addWidget(self.btn_spin, 1)     # stretch=1，让开始按钮占满剩余空间
 
         right_layout.addLayout(spin_layout)
-        
+
+        # ----- 批量抽取（不放回）区域 -----
+        batch_frame = QFrame()
+        batch_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        batch_frame.setStyleSheet("QFrame { background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 6px; }")
+        batch_layout = QVBoxLayout(batch_frame)
+        batch_layout.setContentsMargins(8, 4, 8, 4)
+        batch_layout.setSpacing(4)
+
+        batch_top_layout = QHBoxLayout()
+        batch_top_layout.addWidget(QLabel("不放回批量抽取:"))
+        batch_top_layout.addStretch()
+        batch_layout.addLayout(batch_top_layout)
+
+        batch_ctrl_layout = QHBoxLayout()
+        batch_ctrl_layout.addWidget(QLabel("抽取次数:"))
+        self.batch_spinbox = QSpinBox()
+        self.batch_spinbox.setRange(1, 999)
+        self.batch_spinbox.setValue(5)
+        self.batch_spinbox.setFixedWidth(60)
+        batch_ctrl_layout.addWidget(self.batch_spinbox)
+        self.btn_batch_spin = QPushButton("开始批量抽取")
+        self.btn_batch_spin.setMinimumHeight(32)
+        self.btn_batch_spin.setStyleSheet("background-color: #FF6B6B; color: white; font-weight: bold;")
+        self.btn_batch_spin.clicked.connect(self.startBatchSpin)
+        batch_ctrl_layout.addWidget(self.btn_batch_spin, 1)
+        self.btn_stop_batch = QPushButton("停止")
+        self.btn_stop_batch.setEnabled(False)
+        self.btn_stop_batch.clicked.connect(self.stopBatchSpin)
+        batch_ctrl_layout.addWidget(self.btn_stop_batch)
+        batch_layout.addLayout(batch_ctrl_layout)
+
+        self.batch_log_label = QLabel("")
+        self.batch_log_label.setStyleSheet("color: #555; font-size: 11px; background: transparent; border: none;")
+        self.batch_log_label.setWordWrap(True)
+        batch_layout.addWidget(self.batch_log_label)
+
+        right_layout.addWidget(batch_frame)
 
         self.result_label = QLabel("")
-        self.result_label.setAlignment(Qt.AlignCenter)
+        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.result_label.setStyleSheet(
             "font-size: 18px; font-weight: bold; color: #333;"
         )
@@ -944,7 +998,7 @@ class MainWindow(QMainWindow):
         right_layout.addLayout(shadow_layout)
 
         # 使用 QSplitter 可拖拽调整左右比例
-        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.addWidget(self.left_panel)
         self.splitter.addWidget(right_panel)
@@ -979,19 +1033,6 @@ class MainWindow(QMainWindow):
         self.applyUIFont()
         self.applyWheelFont()
 
-    # ================= 字体切换 =================
-
-    def applyGlobalFont(self, family):
-        """将指定字体家族应用到整个窗口及关键控件"""
-        font = QFont(family)
-        # 设置主窗口字体，子控件默认继承
-        self.setFont(font)
-        # 转盘文字
-        self.wheel.setFontFamily(family)
-        # 结果标签（stylesheet 中未指定 family，所以 setFont 生效）
-        self.result_label.setFont(font)
-        # 字体选择框的当前字体同步
-        self.font_combo.setCurrentFont(font)
     # ================= 分组管理 =================
     # （以下方法保持不变，仅列出，未改动）
     def updateGroupCombo(self):
@@ -1019,6 +1060,7 @@ class MainWindow(QMainWindow):
 
         self.updateDrawnList()
         self.updateExtractButtonState()
+        self._updateBatchButtonState()
 
     def onGroupChanged(self, index):
         if index >= 0:
@@ -1042,9 +1084,9 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self, "删除分组",
             f"确定删除分组 '{self.groups[self.current_group_index]['name']}' 吗？",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             del self.groups[self.current_group_index]
             if self.current_group_index >= len(self.groups):
                 self.current_group_index = len(self.groups) - 1
@@ -1140,10 +1182,11 @@ class MainWindow(QMainWindow):
             self.saveData()
 
     def clearItems(self):
-        reply = QMessageBox.question(self, "清空", "确定清空所有项目吗？",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+        reply = QMessageBox.question(self, "清空", "确定清空当前分组的所有项目吗？\n（抽出项目也将一并清空）",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             self.groups[self.current_group_index]['items'] = []
+            self.groups[self.current_group_index]['drawn_items'] = []
             self.updateWheelFromCurrentGroup()
             self.saveData()
 
@@ -1153,13 +1196,107 @@ class MainWindow(QMainWindow):
         self.left_panel.setEnabled(False)
         self.btn_spin.setEnabled(False)
         self.btn_extract.setEnabled(False)
+        if self.batch_remaining <= 0:
+            self.btn_batch_spin.setEnabled(False)
 
     def onSpinFinished(self, index, text):
         """旋转结束时显示结果并恢复编辑"""
         self.result_label.setText(f"🎉 恭喜中奖: {text}")
+
+        # 批量抽取模式
+        if self.batch_remaining > 0:
+            # 自动抽出当前结果
+            self._autoExtract(text)
+            self.batch_results.append(text)
+            self.batch_remaining -= 1
+            self.batch_log_label.setText(
+                f"已抽取 {len(self.batch_results)} 次，剩余 {self.batch_remaining} 次\n"
+                + "  →  ".join(self.batch_results[-8:])
+                + ("..." if len(self.batch_results) > 8 else "")
+            )
+            self.saveData()
+
+            # 检查是否还有项目可供抽取
+            group = self.groups[self.current_group_index]
+            if not group['items'] or self.batch_remaining <= 0:
+                self._finishBatch()
+                return
+
+            # 继续下一轮旋转
+            QTimer.singleShot(400, self.wheel.startSpin)
+            return
+
+        # 单次抽取模式：恢复正常状态
         self.left_panel.setEnabled(True)
         self.btn_spin.setEnabled(True)
+        self.btn_batch_spin.setEnabled(True)
         self.updateExtractButtonState()
+
+    # ================= 批量抽取（不放回）=================
+    def startBatchSpin(self):
+        """开始批量不放回抽取"""
+        if self.wheel.spinning:
+            return
+        if not self.groups or self.current_group_index < 0:
+            return
+        items = self.groups[self.current_group_index]['items']
+        if not items:
+            QMessageBox.warning(self, "提示", "当前分组没有可抽取的项目！")
+            return
+
+        n = self.batch_spinbox.value()
+        if n > len(items):
+            reply = QMessageBox.question(
+                self, "确认",
+                f"当前只有 {len(items)} 个项目，但请求抽取 {n} 次。\n"
+                f"抽取 {len(items)} 次后会自动停止。是否继续？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            n = len(items)
+
+        self.batch_remaining = n
+        self.batch_results = []
+        self.batch_log_label.setText(f"开始不放回批量抽取 {n} 次...")
+        self.btn_batch_spin.setEnabled(False)
+        self.btn_stop_batch.setEnabled(True)
+        self.left_panel.setEnabled(False)
+        self.wheel.setItems(items)
+        self.wheel.startSpin()
+
+    def stopBatchSpin(self):
+        """手动停止批量抽取"""
+        self.batch_remaining = 0
+        self._finishBatch()
+
+    def _autoExtract(self, text):
+        """自动将结果移入抽出列表（不等待用户点击抽出按钮）"""
+        group = self.groups[self.current_group_index]
+        if text in group['items']:
+            group['items'].remove(text)
+            if 'drawn_items' not in group:
+                group['drawn_items'] = []
+            group['drawn_items'].append(text)
+            self.updateWheelFromCurrentGroup()
+
+    def _finishBatch(self):
+        """批量抽取结束，恢复界面"""
+        self.batch_remaining = 0
+        self.wheel.spinning = False
+        self.wheel.angular_velocity = 0.0
+        self.wheel.timer.stop()
+        self.result_label.setText(f"✅ 批量抽取完成！共抽取 {len(self.batch_results)} 次")
+        summary = "  →  ".join(self.batch_results[-20:])
+        if len(self.batch_results) > 20:
+            summary += f"\n（共 {len(self.batch_results)} 项，仅显示最后20项）"
+        self.batch_log_label.setText(summary)
+        self.left_panel.setEnabled(True)
+        self.btn_spin.setEnabled(True)
+        self.btn_batch_spin.setEnabled(True)
+        self.btn_stop_batch.setEnabled(False)
+        self.updateExtractButtonState()
+        self.updateDrawnList()
 
     def closeEvent(self, event):
         geo = self.geometry()
@@ -1170,11 +1307,9 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == "__main__":
-    # 高 DPI 适配
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    # PyQt6 默认启用高 DPI 缩放，无需手动设置
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
