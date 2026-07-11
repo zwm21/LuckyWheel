@@ -1013,7 +1013,8 @@ class MainWindow(QMainWindow):
         self.drawn_list_widget.setMaximumHeight(900)                   # 硬上限，可删除，由拖动动态限制
         self.drawn_list_widget.itemSelectionChanged.connect(self.updateDrawnButtonsState)
         self.drawn_list_widget.itemDoubleClicked.connect(self.editDrawnItem)
-        self.drawn_list_widget.setStyleSheet("QListWidget { padding: 0px; }")
+        # 不要给带滚动条的控件单独设 QSS，否则会切换到 QStyleSheetStyle 渲染，
+        # 导致滚动条不跟随 Fusion + palette，在浅色主题下出现深色滚动条。
         bottom_layout.addWidget(self.drawn_list_widget)
 
         # 分隔条2
