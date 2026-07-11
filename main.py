@@ -126,7 +126,9 @@ class WheelWidget(QWidget):
         self.cached_size = None      # 上次生成缓存时的 widget 尺寸
         self.font_size = 0           # 0=自动，>0=固定像素大小
 
-        self.setMinimumSize(350, 350)
+        # 允许被窗口压缩到较小尺寸；实际绘制半径由 min(width, height) 决定，
+        # 因此始终保持圆形比例不变形
+        self.setMinimumSize(200, 200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def setFontSize(self, size):
@@ -1052,13 +1054,19 @@ class MainWindow(QMainWindow):
         # ----- 右侧转盘区域 -----
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
+        right_layout.setSpacing(6)
         self.wheel = WheelWidget()
         self.wheel.spinStarted.connect(self.onSpinStarted)
         self.wheel.spinFinished.connect(self.onSpinFinished)
-        right_layout.addWidget(self.wheel)
+        # 转盘吸收所有剩余高度并保持内部圆形比例（min side 决定绘制半径）
+        right_layout.addWidget(self.wheel, 1)
 
-        # 将操作卡片下推，与底部字体设置区域对齐
-        right_layout.addStretch()
+        # ----- 结算文字（位于单次抽取卡片上方） -----
+        self.result_label = QLabel("")
+        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.result_label.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
+        self.result_label.setStyleSheet("color: #333;")
+        right_layout.addWidget(self.result_label)
 
         # ----- 单次抽取卡片 -----
         self.single_frame = QFrame()
@@ -1091,7 +1099,11 @@ class MainWindow(QMainWindow):
         single_layout.addLayout(spin_layout)
         right_layout.addWidget(self.single_frame)
 
-        # ----- 批量抽取卡片 -----
+        # ----- 底部两栏：左=批量抽取卡片，右=界面/转盘/主题控件 -----
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(8)
+
+        # 左：批量抽取卡片
         self.batch_frame = QFrame()
         self.batch_frame.setStyleSheet("QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
         batch_layout = QVBoxLayout(self.batch_frame)
@@ -1129,56 +1141,44 @@ class MainWindow(QMainWindow):
         self.batch_log_label.setWordWrap(True)
         batch_layout.addWidget(self.batch_log_label)
 
-        right_layout.addWidget(self.batch_frame)
+        bottom_row.addWidget(self.batch_frame, 1)
 
-        self.result_label = QLabel("")
-        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.result_label.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
-        self.result_label.setStyleSheet("color: #333;")
-        right_layout.addWidget(self.result_label)
+        # 右：设置控件列（界面字体 / 转盘字体 / 背景主题+文字阴影）
+        settings_column = QVBoxLayout()
+        settings_column.setSpacing(4)
 
-
-        # ===== 界面字体 =====
         ui_font_layout = QHBoxLayout()
-        ui_font_layout.addStretch()
         ui_font_layout.addWidget(QLabel("界面字体:"))
         self.ui_font_combo = QFontComboBox()
         self.ui_font_combo.setCurrentFont(QFont(self.ui_font_family))
         self.ui_font_combo.currentFontChanged.connect(self.onUIFontChanged)
-        ui_font_layout.addWidget(self.ui_font_combo)
-
+        ui_font_layout.addWidget(self.ui_font_combo, 1)
         ui_font_layout.addWidget(QLabel("大小:"))
         self.ui_font_size_spin = QSpinBox()
         self.ui_font_size_spin.setRange(1, 72)
         self.ui_font_size_spin.setValue(self.ui_font_size)
-        self.ui_font_size_spin.setFixedWidth(42)          # ← 添加这行
+        self.ui_font_size_spin.setFixedWidth(42)
         self.ui_font_size_spin.valueChanged.connect(self.onUIFontSizeChanged)
         ui_font_layout.addWidget(self.ui_font_size_spin)
-        right_layout.addLayout(ui_font_layout)
+        settings_column.addLayout(ui_font_layout)
 
-        # ===== 转盘字体 =====
         wheel_font_layout = QHBoxLayout()
-        wheel_font_layout.addStretch()
         wheel_font_layout.addWidget(QLabel("转盘字体:"))
         self.wheel_font_combo = QFontComboBox()
         self.wheel_font_combo.setCurrentFont(QFont(self.wheel_font_family))
         self.wheel_font_combo.currentFontChanged.connect(self.onWheelFontChanged)
-        wheel_font_layout.addWidget(self.wheel_font_combo)
-
+        wheel_font_layout.addWidget(self.wheel_font_combo, 1)
         wheel_font_layout.addWidget(QLabel("大小:"))
         self.wheel_font_size_spin = QSpinBox()
         self.wheel_font_size_spin.setRange(0, 72)
         self.wheel_font_size_spin.setSpecialValueText("自动")
         self.wheel_font_size_spin.setValue(self.wheel_font_size)
-        self.wheel_font_size_spin.setFixedWidth(42)       # ← 添加这行
+        self.wheel_font_size_spin.setFixedWidth(42)
         self.wheel_font_size_spin.valueChanged.connect(self.onWheelFontSizeChanged)
         wheel_font_layout.addWidget(self.wheel_font_size_spin)
+        settings_column.addLayout(wheel_font_layout)
 
-        right_layout.addLayout(wheel_font_layout)
-
-        # ===== 背景主题 + 文字阴影（同行；背景左对齐转盘字体，阴影右侧） =====
         shadow_layout = QHBoxLayout()
-        shadow_layout.addStretch(1000)
         shadow_layout.addWidget(QLabel("背景主题:"))
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["浅色", "深色", "跟随系统"])
@@ -1192,7 +1192,11 @@ class MainWindow(QMainWindow):
         self.shadow_checkbox.setChecked(self.shadow_enabled)
         self.shadow_checkbox.stateChanged.connect(self.onShadowToggled)
         shadow_layout.addWidget(self.shadow_checkbox)
-        right_layout.addLayout(shadow_layout)
+        settings_column.addLayout(shadow_layout)
+
+        bottom_row.addLayout(settings_column, 1)
+
+        right_layout.addLayout(bottom_row)
 
         # 使用 QSplitter 可拖拽调整左右比例
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
