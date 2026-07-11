@@ -532,35 +532,9 @@ class MainWindow(QMainWindow):
         """浅色=显式浅色调板 / 深色=暗色调板+QSS / 跟随系统=检测"""
         if self.theme == "dark" or (self.theme == "system" and self._isSystemDark()):
             QApplication.instance().setPalette(self._darkPalette())
-            self.setStyleSheet("""
-                QComboBox, QFontComboBox, QSpinBox, QLineEdit {
-                    background-color: #454545;
-                    color: #E0E0E0;
-                    border: 1px solid #555;
-                    border-radius: 4px;
-                }
-                QComboBox QAbstractItemView, QFontComboBox QAbstractItemView {
-                    background-color: #454545;
-                    color: #E0E0E0;
-                    selection-background-color: #555;
-                }
-                QListWidget {
-                    background-color: #3A3A3A;
-                    color: #E0E0E0;
-                    border: 1px solid #555;
-                    border-radius: 4px;
-                }
-                QListWidget::item:selected {
-                    background-color: #555;
-                }
-                QCheckBox::indicator {
-                    width: 16px;
-                    height: 16px;
-                    background-color: #454545;
-                    border: 1px solid #777;
-                    border-radius: 3px;
-                }
-            """)
+            # 不对通用控件设置 QSS，交由 Fusion 样式+调色板自动着色，
+            # 保证深/浅两种主题下控件形态（边框、圆角、indicator 尺寸）完全一致
+            self.setStyleSheet("")
             if hasattr(self, 'single_frame'):
                 self.single_frame.setStyleSheet(
                     "QFrame { background: #3D3D3D; border: none; border-radius: 4px; }")
@@ -831,24 +805,20 @@ class MainWindow(QMainWindow):
         self.drawn_user_height = new_height
 
     def applyUIFont(self):
-        """应用界面字体到全局，所有控件统一字号"""
-        font = QFont(self.ui_font_family, self.ui_font_size)
-        QApplication.setFont(font)
-        if hasattr(self, 'single_title'):
-            # 卡片标题（粗体）
-            self.single_title.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
-            self.batch_title.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
-            self.result_label.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
-            # 普通文本
-            self.batch_log_label.setFont(QFont(self.ui_font_family, self.ui_font_size))
-            self.batch_count_label.setFont(QFont(self.ui_font_family, self.ui_font_size))
-            # 按钮
-            self.btn_extract.setFont(QFont(self.ui_font_family, self.ui_font_size))
-            self.btn_spin.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
-            self.btn_batch_spin.setFont(QFont(self.ui_font_family, self.ui_font_size, QFont.Weight.Bold))
-            self.btn_stop_batch.setFont(QFont(self.ui_font_family, self.ui_font_size))
-            # 输入控件
-            self.batch_spinbox.setFont(QFont(self.ui_font_family, self.ui_font_size))
+        """应用界面字体到全局，所有控件统一字号（保留粗体属性）"""
+        base_font = QFont(self.ui_font_family, self.ui_font_size)
+        QApplication.setFont(base_font)
+        # QApplication.setFont 不会自动刷新已存在控件，这里遍历所有子控件手动同步
+        for widget in self.findChildren(QWidget):
+            # 转盘的字体由 setFontFamily/setFontSize 独立控制，跳过
+            if widget is getattr(self, 'wheel', None):
+                continue
+            old = widget.font()
+            new_font = QFont(base_font)
+            new_font.setBold(old.bold())
+            new_font.setItalic(old.italic())
+            new_font.setUnderline(old.underline())
+            widget.setFont(new_font)
 
     def applyWheelFont(self):
         """应用转盘字体到 WheelWidget"""
