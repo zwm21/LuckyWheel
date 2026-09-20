@@ -17,6 +17,7 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QColor
 
 import main as legacy_main
+from luckywheel.ui import theme as ui_theme
 from main import SECTOR_COLORS, WheelWidget
 
 
@@ -169,7 +170,7 @@ class TestKnownDefects:
         monkeypatch.setattr(legacy_main, "SECTOR_COLORS", palette)
         seen = []
         monkeypatch.setattr(
-            legacy_main, "contrast_text_color",
+            ui_theme, "contrast_text_color",
             lambda background: seen.append(background.name()) or Qt.GlobalColor.black,
         )
 
@@ -190,10 +191,10 @@ class TestKnownDefects:
         green = QColor("#00FF00")   # lightness 50%
         blue = QColor("#0000FF")    # lightness 50%
         assert green.lightness() == blue.lightness() == 128
-        assert legacy_main.contrast_text_color(green) == Qt.GlobalColor.black
-        assert legacy_main.contrast_text_color(blue) == Qt.GlobalColor.white
-        assert legacy_main.contrast_text_color(QColor("#FFFFFF")) == Qt.GlobalColor.black
-        assert legacy_main.contrast_text_color(QColor("#000000")) == Qt.GlobalColor.white
+        assert ui_theme.contrast_text_color(green) == Qt.GlobalColor.black
+        assert ui_theme.contrast_text_color(blue) == Qt.GlobalColor.white
+        assert ui_theme.contrast_text_color(QColor("#FFFFFF")) == Qt.GlobalColor.black
+        assert ui_theme.contrast_text_color(QColor("#000000")) == Qt.GlobalColor.white
 
     def test_palette_all_bright_so_defect_is_invisible(self):
         """32 个调色板颜色 lightness 全部 > 50（实测 91-229），

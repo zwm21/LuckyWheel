@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
 from luckywheel.core import paths as core_paths, spin, storage
 from luckywheel.core.models import AppState, Group
 from luckywheel.core.spin import sector_at
+from luckywheel.ui import theme as ui_theme
 
 # 转盘扇区颜色池
 SECTOR_COLORS = [
@@ -40,24 +41,6 @@ SECTOR_COLORS = [
 # 保存去抖窗口：字号微调、批量抽取每轮、拖拽排序等高频变更在此毫秒数内
 # 合并为一次落盘；关闭窗口等不能丢数据的时机走 flushSave 立即写入
 SAVE_DEBOUNCE_MS = 500
-
-
-def relative_luminance(color):
-    """WCAG 相对亮度：sRGB 线性化后按 Rec.709 权重加权，范围 [0, 1]。"""
-    def channel(value):
-        c = value / 255.0
-        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-
-    return (
-        0.2126 * channel(color.red())
-        + 0.7152 * channel(color.green())
-        + 0.0722 * channel(color.blue())
-    )
-
-
-def contrast_text_color(background):
-    """按背景相对亮度选择黑/白文字，保证可读性。"""
-    return Qt.GlobalColor.white if relative_luminance(background) < 0.5 else Qt.GlobalColor.black
 
 
 def loadEmbeddedFont(font_filename):
@@ -280,7 +263,7 @@ class WheelWidget(QWidget):
             # 对比色取文字实际所在扇区的底色：arcTo 的正向扫掠与
             # (cosθ, sinθ) 参数化方向相反，文字 i 落在扇区 num-1-i 上，
             # 而非 SECTOR_COLORS[i]。调色板全为亮色时取错也不可见。
-            text_color = contrast_text_color(sector_colors[num - 1 - i])
+            text_color = ui_theme.contrast_text_color(sector_colors[num - 1 - i])
             if self.shadow_enabled:
                 painter.setPen(QColor(0, 0, 0, 120))
                 painter.drawText(rect.translated(1, 1), Qt.AlignmentFlag.AlignCenter, item)
@@ -535,7 +518,7 @@ class MainWindow(QMainWindow):
             is_dark: True=深色主题，False=浅色主题
         """
         try:
-            palette = self._darkPalette() if is_dark else self._lightPalette()
+            palette = ui_theme.dark_palette() if is_dark else ui_theme.light_palette()
         except Exception:
             return  # 调色板构造失败，静默退出
 
@@ -576,95 +559,19 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     # ================= 主题切换 =================
-    @staticmethod
-    def _darkPalette():
-        p = QPalette()
-        p.setColor(QPalette.ColorRole.Window,          QColor(53, 53, 53))
-        p.setColor(QPalette.ColorRole.WindowText,      QColor(255, 255, 255))
-        p.setColor(QPalette.ColorRole.Base,            QColor(35, 35, 35))
-        p.setColor(QPalette.ColorRole.AlternateBase,   QColor(53, 53, 53))
-        p.setColor(QPalette.ColorRole.ToolTipBase,     QColor(25, 25, 25))
-        p.setColor(QPalette.ColorRole.ToolTipText,     QColor(255, 255, 255))
-        p.setColor(QPalette.ColorRole.Text,            QColor(255, 255, 255))
-        p.setColor(QPalette.ColorRole.Button,          QColor(53, 53, 53))
-        p.setColor(QPalette.ColorRole.ButtonText,      QColor(255, 255, 255))
-        p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 0, 0))
-        p.setColor(QPalette.ColorRole.Link,            QColor(42, 130, 218))
-        p.setColor(QPalette.ColorRole.Highlight,       QColor(42, 130, 218))
-        p.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-        p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(127, 127, 127))
-        p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,       QColor(127, 127, 127))
-        p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(127, 127, 127))
-        return p
-
-    @staticmethod
-    def _lightPalette():
-        """显式浅色调色板，不依赖系统当前主题"""
-        p = QPalette()
-        p.setColor(QPalette.ColorRole.Window,          QColor(240, 240, 240))
-        p.setColor(QPalette.ColorRole.WindowText,      QColor(0, 0, 0))
-        p.setColor(QPalette.ColorRole.Base,            QColor(255, 255, 255))
-        p.setColor(QPalette.ColorRole.AlternateBase,   QColor(245, 245, 245))
-        p.setColor(QPalette.ColorRole.ToolTipBase,     QColor(255, 255, 220))
-        p.setColor(QPalette.ColorRole.ToolTipText,     QColor(0, 0, 0))
-        p.setColor(QPalette.ColorRole.Text,            QColor(0, 0, 0))
-        p.setColor(QPalette.ColorRole.Button,          QColor(240, 240, 240))
-        p.setColor(QPalette.ColorRole.ButtonText,      QColor(0, 0, 0))
-        p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 0, 0))
-        p.setColor(QPalette.ColorRole.Link,            QColor(42, 130, 218))
-        p.setColor(QPalette.ColorRole.Highlight,       QColor(42, 130, 218))
-        p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-        return p
-
     def _isSystemDark(self):
         return QApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
 
     def _applyTheme(self):
-        """浅色=显式浅色调板 / 深色=暗色调板+QSS / 跟随系统=检测"""
-        if self.theme == "dark" or (self.theme == "system" and self._isSystemDark()):
-            QApplication.instance().setPalette(self._darkPalette())
-            # 不对通用控件设置 QSS，交由 Fusion 样式+调色板自动着色，
-            # 保证深/浅两种主题下控件形态（边框、圆角、indicator 尺寸）完全一致
-            self.setStyleSheet("")
-            if hasattr(self, 'single_frame'):
-                self.single_frame.setStyleSheet(
-                    "QFrame { background: #3D3D3D; border: none; border-radius: 4px; }")
-                self.single_title.setStyleSheet(
-                    "color: #AAA; background: transparent; border: none;")
-                self.batch_frame.setStyleSheet(
-                    "QFrame { background: #3D3D3D; border: none; border-radius: 4px; padding: 4px; }")
-                self.batch_title.setStyleSheet(
-                    "color: #AAA; background: transparent; border: none;")
-                self.batch_log_label.setStyleSheet(
-                    "color: #AAA; background: transparent; border: none;")
-                self.result_label.setStyleSheet(
-                    "font-weight: bold; color: #E0E0E0;")
-                self.splitter_handle.setStyleSheet(
-                    "QFrame { background: #4A4A4A; border: 1px solid #555; }")
-                self.drawn_splitter_handle.setStyleSheet(
-                    "QFrame { background: #4A4A4A; border: 1px solid #555; }")
-            self._initLowerAreaColors(is_dark=True)
-        else:
-            QApplication.instance().setPalette(self._lightPalette())
-            self.setStyleSheet("")
-            if hasattr(self, 'single_frame'):
-                self.single_frame.setStyleSheet(
-                    "QFrame { background: #f8f7f5; border: none; border-radius: 4px; }")
-                self.single_title.setStyleSheet(
-                    "color: #555; background: transparent; border: none;")
-                self.batch_frame.setStyleSheet(
-                    "QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
-                self.batch_title.setStyleSheet(
-                    "color: #555; background: transparent; border: none;")
-                self.batch_log_label.setStyleSheet(
-                    "color: #666; background: transparent; border: none;")
-                self.result_label.setStyleSheet(
-                    "font-weight: bold; color: #333;")
-                self.splitter_handle.setStyleSheet(
-                    "QFrame { border: 1px solid #ccc; background: #eee; }")
-                self.drawn_splitter_handle.setStyleSheet(
-                    "QFrame { border: 1px solid #ccc; background: #eee; }")
-            self._initLowerAreaColors(is_dark=False)
+        """浅色=显式浅色调色板 / 深色=暗色调色板 / 跟随系统=检测。
+
+        样式与调色板收敛在 ui.theme（颜色 token + 单份 QSS 模板）；
+        本方法只负责解析主题名并把窗口交给它。注意列表类控件不设 QSS，
+        见 ui/theme.py 模块 docstring 的滚动条约束。
+        """
+        dark = self.theme == "dark" or (self.theme == "system" and self._isSystemDark())
+        ui_theme.apply_theme(self, dark)
+        self._initLowerAreaColors(is_dark=dark)
 
     def _onSystemThemeChanged(self):
         if self.theme == "system":
