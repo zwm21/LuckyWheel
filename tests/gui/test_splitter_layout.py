@@ -53,9 +53,7 @@ class TestSplitterLayout:
         data["drawn_list_height"] = 160
         data_file = tmp_path / "wheel_data.json"
         data_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        monkeypatch.setattr(
-            "luckywheel.core.paths.resolve_data_path", lambda: (data_file, None)
-        )
+        monkeypatch.setattr("luckywheel.core.paths.resolve_data_path", lambda: (data_file, None))
         win = MainWindow()
         qtbot.addWidget(win)
         win.resize(1400, 1000)

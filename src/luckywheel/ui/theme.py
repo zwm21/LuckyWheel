@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import QApplication
 
 def relative_luminance(color):
     """WCAG 相对亮度：sRGB 线性化后按 Rec.709 权重加权，范围 [0, 1]。"""
+
     def channel(value):
         c = value / 255.0
         return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
@@ -39,21 +40,21 @@ def contrast_text_color(background):
 def dark_palette():
     """深色调色板（不对通用控件设 QSS，保证深浅主题控件形态一致）。"""
     p = QPalette()
-    p.setColor(QPalette.ColorRole.Window,          QColor(53, 53, 53))
-    p.setColor(QPalette.ColorRole.WindowText,      QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.Base,            QColor(35, 35, 35))
-    p.setColor(QPalette.ColorRole.AlternateBase,   QColor(53, 53, 53))
-    p.setColor(QPalette.ColorRole.ToolTipBase,     QColor(25, 25, 25))
-    p.setColor(QPalette.ColorRole.ToolTipText,     QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.Text,            QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.Button,          QColor(53, 53, 53))
-    p.setColor(QPalette.ColorRole.ButtonText,      QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 0, 0))
-    p.setColor(QPalette.ColorRole.Link,            QColor(42, 130, 218))
-    p.setColor(QPalette.ColorRole.Highlight,       QColor(42, 130, 218))
+    p.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+    p.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
+    p.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
+    p.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+    p.setColor(QPalette.ColorRole.ToolTipBase, QColor(25, 25, 25))
+    p.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
+    p.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
+    p.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+    p.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
+    p.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+    p.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+    p.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
     p.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
     p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(127, 127, 127))
-    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,       QColor(127, 127, 127))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(127, 127, 127))
     p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(127, 127, 127))
     return p
 
@@ -61,18 +62,18 @@ def dark_palette():
 def light_palette():
     """显式浅色调色板，不依赖系统当前主题。"""
     p = QPalette()
-    p.setColor(QPalette.ColorRole.Window,          QColor(240, 240, 240))
-    p.setColor(QPalette.ColorRole.WindowText,      QColor(0, 0, 0))
-    p.setColor(QPalette.ColorRole.Base,            QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.AlternateBase,   QColor(245, 245, 245))
-    p.setColor(QPalette.ColorRole.ToolTipBase,     QColor(255, 255, 220))
-    p.setColor(QPalette.ColorRole.ToolTipText,     QColor(0, 0, 0))
-    p.setColor(QPalette.ColorRole.Text,            QColor(0, 0, 0))
-    p.setColor(QPalette.ColorRole.Button,          QColor(240, 240, 240))
-    p.setColor(QPalette.ColorRole.ButtonText,      QColor(0, 0, 0))
-    p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 0, 0))
-    p.setColor(QPalette.ColorRole.Link,            QColor(42, 130, 218))
-    p.setColor(QPalette.ColorRole.Highlight,       QColor(42, 130, 218))
+    p.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))
+    p.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
+    p.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+    p.setColor(QPalette.ColorRole.AlternateBase, QColor(245, 245, 245))
+    p.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 220))
+    p.setColor(QPalette.ColorRole.ToolTipText, QColor(0, 0, 0))
+    p.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+    p.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
+    p.setColor(QPalette.ColorRole.ButtonText, QColor(0, 0, 0))
+    p.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+    p.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+    p.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
     p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
     return p
 
@@ -125,8 +126,14 @@ def apply_theme(window, dark):
     # 保证深/浅两种主题下控件形态（边框、圆角、indicator 尺寸）完全一致
     window.setStyleSheet("")
     styles = card_styles("dark" if dark else "light")
-    for name in ("single_frame", "single_title", "batch_frame", "batch_title",
-                 "batch_log_label", "result_label"):
+    for name in (
+        "single_frame",
+        "single_title",
+        "batch_frame",
+        "batch_title",
+        "batch_log_label",
+        "result_label",
+    ):
         widget = getattr(window, name, None)
         if widget is not None:
             widget.setStyleSheet(styles[name])

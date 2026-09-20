@@ -38,9 +38,7 @@ def build_window(qtbot, monkeypatch, tmp_path, geometry):
     data["window_geometry"] = geometry
     data_file = tmp_path / "wheel_data.json"
     data_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(
-        "luckywheel.core.paths.resolve_data_path", lambda: (data_file, None)
-    )
+    monkeypatch.setattr("luckywheel.core.paths.resolve_data_path", lambda: (data_file, None))
     win = MainWindow()
     qtbot.addWidget(win)
     return win
@@ -92,9 +90,7 @@ class TestGeometryScreenValidation:
         geo = win.geometry()
         assert geo.x() >= 0 and geo.y() >= 0, "回退窗口必须落在主屏可用区域内"
 
-    def test_bad_geometry_falls_back_to_center(
-        self, qtbot, monkeypatch, tmp_path, patch_screens
-    ):
+    def test_bad_geometry_falls_back_to_center(self, qtbot, monkeypatch, tmp_path, patch_screens):
         """长度非 4 的几何在 core 层已被收敛为 None，此处验证端到端回退。"""
         patch_screens((0, 0, 1920, 1080))
         win = build_window(qtbot, monkeypatch, tmp_path, [10, 20])

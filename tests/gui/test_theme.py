@@ -45,8 +45,12 @@ class TestNoStylesheetOnScrollableWidgets:
         for name in ("light", "dark"):
             styles = ui_theme.card_styles(name)
             assert set(styles) == {
-                "single_frame", "batch_frame", "single_title",
-                "batch_title", "batch_log_label", "result_label",
+                "single_frame",
+                "batch_frame",
+                "single_title",
+                "batch_title",
+                "batch_log_label",
+                "result_label",
             }
 
 
@@ -56,9 +60,11 @@ class TestCardStyleValues:
     def test_light_cards_match_legacy_values(self):
         styles = ui_theme.card_styles("light")
         assert styles["single_frame"] == (
-            "QFrame { background: #f8f7f5; border: none; border-radius: 4px; }")
+            "QFrame { background: #f8f7f5; border: none; border-radius: 4px; }"
+        )
         assert styles["batch_frame"] == (
-            "QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }")
+            "QFrame { background: #f8f7f5; border: none; border-radius: 4px; padding: 4px; }"
+        )
         assert styles["single_title"] == "color: #555; background: transparent; border: none;"
         assert styles["batch_log_label"] == "color: #666; background: transparent; border: none;"
         assert styles["result_label"] == "font-weight: bold; color: #333;"
@@ -66,9 +72,11 @@ class TestCardStyleValues:
     def test_dark_cards_match_legacy_values(self):
         styles = ui_theme.card_styles("dark")
         assert styles["single_frame"] == (
-            "QFrame { background: #3D3D3D; border: none; border-radius: 4px; }")
+            "QFrame { background: #3D3D3D; border: none; border-radius: 4px; }"
+        )
         assert styles["batch_frame"] == (
-            "QFrame { background: #3D3D3D; border: none; border-radius: 4px; padding: 4px; }")
+            "QFrame { background: #3D3D3D; border: none; border-radius: 4px; padding: 4px; }"
+        )
         assert styles["single_title"] == "color: #AAA; background: transparent; border: none;"
         assert styles["batch_log_label"] == "color: #AAA; background: transparent; border: none;"
         assert styles["result_label"] == "font-weight: bold; color: #E0E0E0;"
@@ -79,9 +87,11 @@ class TestCardStyleValues:
         dark = ui_theme.card_styles("dark")
         assert light["single_frame"] != dark["single_frame"]
         assert light["result_label"] != dark["result_label"]
+
         # 结构一致：去掉色值后逐字符相等
         def strip(s):
             return s.replace("#f8f7f5", "").replace("#3D3D3D", "")
+
         assert strip(light["single_frame"]) == strip(dark["single_frame"])
 
 

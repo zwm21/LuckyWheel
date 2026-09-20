@@ -171,7 +171,8 @@ class TestKnownDefects:
         monkeypatch.setattr(wheel_module, "SECTOR_COLORS", palette)
         seen = []
         monkeypatch.setattr(
-            ui_theme, "contrast_text_color",
+            ui_theme,
+            "contrast_text_color",
             lambda background: seen.append(background.name()) or Qt.GlobalColor.black,
         )
 
@@ -189,8 +190,8 @@ class TestKnownDefects:
         """阈值基于 WCAG 相对亮度而非 HSL lightness：同 lightness 不同色相结果不同。"""
         # 两者 HSL lightness 都是 50%（Qt 的 lightness() 走 0-255 刻度，故为 128），
         # 但绿色的人眼亮度远高于蓝色
-        green = QColor("#00FF00")   # lightness 50%
-        blue = QColor("#0000FF")    # lightness 50%
+        green = QColor("#00FF00")  # lightness 50%
+        blue = QColor("#0000FF")  # lightness 50%
         assert green.lightness() == blue.lightness() == 128
         assert ui_theme.contrast_text_color(green) == Qt.GlobalColor.black
         assert ui_theme.contrast_text_color(blue) == Qt.GlobalColor.white

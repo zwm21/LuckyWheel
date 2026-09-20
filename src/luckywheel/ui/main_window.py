@@ -6,7 +6,6 @@
 纯绘制在 ui/wheel.py，主题在 ui/theme.py，算法在 core/。
 """
 
-
 import os
 import random
 import sys
@@ -54,7 +53,7 @@ SAVE_DEBOUNCE_MS = 500
 def loadEmbeddedFont(font_filename):
     """加载内嵌字体并返回族名，失败返回 None"""
     # PyInstaller 打包后解压路径
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, "frozen", False):
         base_dir = sys._MEIPASS
     else:
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -66,26 +65,29 @@ def loadEmbeddedFont(font_filename):
             if families:
                 return families[0]  # 返回族名
     return None
+
+
 class MainWindow(QMainWindow):
     """主窗口：编辑面板 + 转盘"""
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("幸运大转盘")
         self.groups = []
         self.current_group_index = 0
         self._updating_list = False
-        self.shadow_enabled = True   # 给一个默认值，loadData 会覆盖
+        self.shadow_enabled = True  # 给一个默认值，loadData 会覆盖
         self.window_geometry = None
         self.splitter_sizes = None
         self.user_list_height = 200
-        self.drawn_user_height = 120   # 抽出列表默认高度
+        self.drawn_user_height = 120  # 抽出列表默认高度
 
         # 批量抽取相关
-        self.batch_remaining = 0        # 批量抽取剩余次数
-        self.batch_results = []         # 批量抽取结果日志
-        self.batch_spin_count = 3       # 批量抽取默认次数
-        self.theme = "light"           # 背景主题: light / dark / system
-        self.last_result_index = None   # 最近一次中奖扇区的索引（按索引抽出的依据）
+        self.batch_remaining = 0  # 批量抽取剩余次数
+        self.batch_results = []  # 批量抽取结果日志
+        self.batch_spin_count = 3  # 批量抽取默认次数
+        self.theme = "light"  # 背景主题: light / dark / system
+        self.last_result_index = None  # 最近一次中奖扇区的索引（按索引抽出的依据）
 
         # 保存去抖：saveData 只重置这个单次定时器，到点或 flushSave 才真正落盘
         self._save_timer = QTimer(self)
@@ -138,12 +140,12 @@ class MainWindow(QMainWindow):
 
         widgets = []
         try:
-            if hasattr(self, 'drawn_list_widget') and self.drawn_list_widget is not None:
+            if hasattr(self, "drawn_list_widget") and self.drawn_list_widget is not None:
                 widgets.append(self.drawn_list_widget)
         except (RuntimeError, AttributeError):
             pass
         try:
-            if hasattr(self, 'list_widget') and self.list_widget is not None:
+            if hasattr(self, "list_widget") and self.list_widget is not None:
                 widgets.append(self.list_widget)
         except (RuntimeError, AttributeError):
             pass
@@ -203,23 +205,21 @@ class MainWindow(QMainWindow):
         if not self.groups:
             return
         # 将当前项目列表拼成多行文本
-        current_text = "\n".join(self.groups[self.current_group_index]['items'])
+        current_text = "\n".join(self.groups[self.current_group_index]["items"])
         text, ok = QInputDialog.getMultiLineText(
-            self, "编辑所有项目",
-            "每行一个项目（可添加、删除、修改）:",
-            text=current_text
+            self, "编辑所有项目", "每行一个项目（可添加、删除、修改）:", text=current_text
         )
         if ok:
             # 按行分割，过滤空行
             lines = [line.strip() for line in text.splitlines() if line.strip()]
-            self.groups[self.current_group_index]['items'] = lines
+            self.groups[self.current_group_index]["items"] = lines
             self.updateWheelFromCurrentGroup()
             self.saveData()
 
     def updateDrawnList(self):
         """刷新抽出项目列表"""
         if 0 <= self.current_group_index < len(self.groups):
-            drawn_items = self.groups[self.current_group_index].get('drawn_items', [])
+            drawn_items = self.groups[self.current_group_index].get("drawn_items", [])
         else:
             drawn_items = []
         self.drawn_list_widget.clear()
@@ -237,7 +237,7 @@ class MainWindow(QMainWindow):
         if not self.groups or self.current_group_index < 0:
             self.btn_extract.setEnabled(False)
             return
-        items = self.groups[self.current_group_index]['items']
+        items = self.groups[self.current_group_index]["items"]
         has_result = self.last_result_index is not None
         self.btn_extract.setEnabled(bool(has_result and items))
 
@@ -246,7 +246,7 @@ class MainWindow(QMainWindow):
         if not self.groups or self.current_group_index < 0:
             self.btn_batch_spin.setEnabled(False)
             return
-        items = self.groups[self.current_group_index]['items']
+        items = self.groups[self.current_group_index]["items"]
         has_items = len(items) > 0
         self.btn_batch_spin.setEnabled(has_items and not self.wheel.spinning)
 
@@ -261,10 +261,10 @@ class MainWindow(QMainWindow):
             return
         index = self.last_result_index
         group = self.groups[self.current_group_index]
-        if index is None or not 0 <= index < len(group['items']):
+        if index is None or not 0 <= index < len(group["items"]):
             return
-        item_text = group['items'].pop(index)
-        group.setdefault('drawn_items', []).append(item_text)
+        item_text = group["items"].pop(index)
+        group.setdefault("drawn_items", []).append(item_text)
         self.updateWheelFromCurrentGroup()  # 内部会清理 last_result_index
         self.saveData()
 
@@ -283,16 +283,16 @@ class MainWindow(QMainWindow):
         next_row = -1
         if total_rows > 1:
             if current_row == total_rows - 1:
-                next_row = current_row - 1    # 最后一项 → 上一项
+                next_row = current_row - 1  # 最后一项 → 上一项
             else:
-                next_row = current_row #+ 1    # 否则 → 下一项
+                next_row = current_row  # + 1    # 否则 → 下一项
 
         # 执行移除
-        if 0 <= current_row < len(group['drawn_items']):
-            item_text = group['drawn_items'][current_row]   # 根据索引获取准确项目
-            del group['drawn_items'][current_row]           # 根据索引删除
-            group['items'].append(item_text)
-            self.updateWheelFromCurrentGroup()   # 刷新列表
+        if 0 <= current_row < len(group["drawn_items"]):
+            item_text = group["drawn_items"][current_row]  # 根据索引获取准确项目
+            del group["drawn_items"][current_row]  # 根据索引删除
+            group["items"].append(item_text)
+            self.updateWheelFromCurrentGroup()  # 刷新列表
 
             # 按索引直接选中
             if next_row >= 0 and self.drawn_list_widget.count() > 0:
@@ -318,11 +318,11 @@ class MainWindow(QMainWindow):
             if current_row == total_rows - 1:
                 next_row = current_row - 1
             else:
-                next_row = current_row #+ 1
+                next_row = current_row  # + 1
 
-        if 0 <= current_row < len(group['drawn_items']):
-            del group['drawn_items'][current_row]
-            self.updateDrawnList()              # 刷新
+        if 0 <= current_row < len(group["drawn_items"]):
+            del group["drawn_items"][current_row]
+            self.updateDrawnList()  # 刷新
 
             if next_row >= 0 and self.drawn_list_widget.count() > 0:
                 if next_row >= self.drawn_list_widget.count():
@@ -336,9 +336,9 @@ class MainWindow(QMainWindow):
             return
         row = self.drawn_list_widget.currentRow()
         group = self.groups[self.current_group_index]
-        if row < 0 or row >= len(group.get('drawn_items', [])):
+        if row < 0 or row >= len(group.get("drawn_items", [])):
             return
-        old_text = group['drawn_items'][row]
+        old_text = group["drawn_items"][row]
 
         dlg = QDialog(self)
         dlg.setWindowTitle("编辑抽出项目")
@@ -372,7 +372,7 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             new_text = edit.text().strip()
             if new_text and new_text != old_text:
-                group['drawn_items'][row] = new_text
+                group["drawn_items"][row] = new_text
                 self.updateDrawnList()
                 self.saveData()
 
@@ -383,7 +383,7 @@ class MainWindow(QMainWindow):
         # QApplication.setFont 不会自动刷新已存在控件，这里遍历所有子控件手动同步
         for widget in self.findChildren(QWidget):
             # 转盘的字体由 setFontFamily/setFontSize 独立控制，跳过
-            if widget is getattr(self, 'wheel', None):
+            if widget is getattr(self, "wheel", None):
                 continue
             old = widget.font()
             new_font = QFont(base_font)
@@ -416,6 +416,7 @@ class MainWindow(QMainWindow):
         self.wheel_font_size = size
         self.applyWheelFont()
         self.saveData()
+
     # ================= 数据持久化 =================
     def loadData(self):
         state, warnings = storage.load_state(self.data_file)
@@ -464,11 +465,13 @@ class MainWindow(QMainWindow):
                 # 保存实际显示的高度（所见即所得）
                 list_height=(
                     self.list_widget.height()
-                    if hasattr(self, 'list_widget') else self.user_list_height
+                    if hasattr(self, "list_widget")
+                    else self.user_list_height
                 ),
                 drawn_list_height=(
                     self.drawn_list_widget.height()
-                    if hasattr(self, 'drawn_list_widget') else self.drawn_user_height
+                    if hasattr(self, "drawn_list_widget")
+                    else self.drawn_user_height
                 ),
                 batch_spin_count=self.batch_spin_count,
                 theme=self.theme,
@@ -632,8 +635,7 @@ class MainWindow(QMainWindow):
 
         self.btn_spin = QPushButton("开始旋转")
         self.btn_spin.setMinimumHeight(38)
-        self.btn_spin.setStyleSheet(
-            "background-color: #FF6B6B; color: white; font-weight: bold;")
+        self.btn_spin.setStyleSheet("background-color: #FF6B6B; color: white; font-weight: bold;")
         self.btn_spin.setToolTip("或点击转盘中心的 GO 按钮")
         self.btn_spin.clicked.connect(lambda: self.wheel.startSpin())
         spin_layout.addWidget(self.btn_spin, 1)
@@ -667,7 +669,8 @@ class MainWindow(QMainWindow):
         self.btn_batch_spin = QPushButton("开始批量抽取")
         self.btn_batch_spin.setMinimumHeight(32)
         self.btn_batch_spin.setStyleSheet(
-            "background-color: #FF6B6B; color: white; font-weight: bold;")
+            "background-color: #FF6B6B; color: white; font-weight: bold;"
+        )
         self.btn_batch_spin.clicked.connect(self.startBatchSpin)
         batch_ctrl_layout.addWidget(self.btn_batch_spin, 1)
         self.btn_stop_batch = QPushButton("停止")
@@ -748,7 +751,7 @@ class MainWindow(QMainWindow):
         if self.splitter_sizes:
             self.splitter.setSizes(self.splitter_sizes)
         else:
-            self.splitter.setSizes([250, 600])   # 初始左侧 300px，右侧占剩余
+            self.splitter.setSizes([250, 600])  # 初始左侧 300px，右侧占剩余
 
         main_layout.addWidget(self.splitter)
 
@@ -759,8 +762,8 @@ class MainWindow(QMainWindow):
         self.shadow_checkbox.setChecked(self.shadow_enabled)
         self.wheel.setShadowEnabled(self.shadow_enabled)
 
-        self.btn_extract.setEnabled(False)   # 初始无结果，禁用
-        #self.applyGlobalFont(self.font_family) # 应用全局字体
+        self.btn_extract.setEnabled(False)  # 初始无结果，禁用
+        # self.applyGlobalFont(self.font_family) # 应用全局字体
         # 应用保存的字体设置
         self.applyUIFont()
         self.applyWheelFont()
@@ -796,7 +799,7 @@ class MainWindow(QMainWindow):
         self.group_combo.blockSignals(True)
         self.group_combo.clear()
         for group in self.groups:
-            self.group_combo.addItem(group['name'])
+            self.group_combo.addItem(group["name"])
         self.group_combo.setCurrentIndex(self.current_group_index)
         self.group_combo.blockSignals(False)
 
@@ -804,7 +807,7 @@ class MainWindow(QMainWindow):
         """用当前分组数据刷新界面"""
         self._updating_list = True
         if 0 <= self.current_group_index < len(self.groups):
-            items = self.groups[self.current_group_index]['items']
+            items = self.groups[self.current_group_index]["items"]
             self.list_widget.clear()
             self.list_widget.addItems(items)
             self.wheel.setItems(items)
@@ -830,7 +833,7 @@ class MainWindow(QMainWindow):
     def addGroup(self):
         name, ok = QInputDialog.getText(self, "添加分组", "分组名称:")
         if ok and name.strip():
-            self.groups.append({'name': name.strip(), 'items': [], 'drawn_items': []})
+            self.groups.append({"name": name.strip(), "items": [], "drawn_items": []})
             self.current_group_index = len(self.groups) - 1
             self.updateWheelFromCurrentGroup()
             self.saveData()
@@ -840,9 +843,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", "至少保留一个分组")
             return
         reply = QMessageBox.question(
-            self, "删除分组",
+            self,
+            "删除分组",
             f"确定删除分组 '{self.groups[self.current_group_index]['name']}' 吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
             del self.groups[self.current_group_index]
@@ -854,11 +858,10 @@ class MainWindow(QMainWindow):
     def renameGroup(self):
         if self.groups:
             name, ok = QInputDialog.getText(
-                self, "重命名分组", "新名称:",
-                text=self.groups[self.current_group_index]['name']
+                self, "重命名分组", "新名称:", text=self.groups[self.current_group_index]["name"]
             )
             if ok and name.strip():
-                self.groups[self.current_group_index]['name'] = name.strip()
+                self.groups[self.current_group_index]["name"] = name.strip()
                 self.updateGroupCombo()
                 self.saveData()
 
@@ -868,7 +871,7 @@ class MainWindow(QMainWindow):
             return
         text, ok = QInputDialog.getText(self, "添加项目", "项目文字:")
         if ok and text.strip():
-            self.groups[self.current_group_index]['items'].append(text.strip())
+            self.groups[self.current_group_index]["items"].append(text.strip())
             self.updateWheelFromCurrentGroup()
             self.saveData()
 
@@ -879,7 +882,7 @@ class MainWindow(QMainWindow):
         if ok and text.strip():
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             if lines:
-                self.groups[self.current_group_index]['items'].extend(lines)
+                self.groups[self.current_group_index]["items"].extend(lines)
                 self.updateWheelFromCurrentGroup()
                 self.saveData()
 
@@ -888,20 +891,20 @@ class MainWindow(QMainWindow):
             return
         group = self.groups[self.current_group_index]
         row = self.list_widget.currentRow()
-        if row < 0 or row >= len(group['items']):
+        if row < 0 or row >= len(group["items"]):
             return
         current_row = row
-        total_items = len(group['items'])
+        total_items = len(group["items"])
         # 计算下一个要选中的行号
         next_row = -1
         if total_items > 1:
-            if current_row == total_items - 1:    # 最后一项 → 选上一项
+            if current_row == total_items - 1:  # 最后一项 → 选上一项
                 next_row = current_row - 1
-            else:                                 # 否则选正下方（删除后原下一项会占据当前行）
+            else:  # 否则选正下方（删除后原下一项会占据当前行）
                 next_row = current_row
         # 执行删除
-        del group['items'][row]
-        self.updateWheelFromCurrentGroup()        # 刷新列表
+        del group["items"][row]
+        self.updateWheelFromCurrentGroup()  # 刷新列表
         self.saveData()
         # 自动选中下一个项目
         if next_row >= 0 and self.list_widget.count() > 0:
@@ -914,11 +917,11 @@ class MainWindow(QMainWindow):
             row = self.list_widget.row(item)
         else:
             row = self.list_widget.currentRow()
-        if row >= 0 and row < len(self.groups[self.current_group_index]['items']):
-            old_text = self.groups[self.current_group_index]['items'][row]
+        if row >= 0 and row < len(self.groups[self.current_group_index]["items"]):
+            old_text = self.groups[self.current_group_index]["items"][row]
             text, ok = QInputDialog.getText(self, "编辑项目", "修改文字:", text=old_text)
             if ok and text.strip():
-                self.groups[self.current_group_index]['items'][row] = text.strip()
+                self.groups[self.current_group_index]["items"][row] = text.strip()
                 self.updateWheelFromCurrentGroup()
                 self.saveData()
 
@@ -927,25 +930,28 @@ class MainWindow(QMainWindow):
         if self._updating_list:
             return
         items = [self.list_widget.item(i).text() for i in range(self.list_widget.count())]
-        if items != self.groups[self.current_group_index]['items']:
-            self.groups[self.current_group_index]['items'] = items
+        if items != self.groups[self.current_group_index]["items"]:
+            self.groups[self.current_group_index]["items"] = items
             self.wheel.setItems(items)
             self.saveData()
             self.updateExtractButtonState()
 
     def shuffleItems(self):
-        if self.groups and self.groups[self.current_group_index]['items']:
-            random.shuffle(self.groups[self.current_group_index]['items'])
+        if self.groups and self.groups[self.current_group_index]["items"]:
+            random.shuffle(self.groups[self.current_group_index]["items"])
             self.updateWheelFromCurrentGroup()
             self.saveData()
 
     def clearItems(self):
         reply = QMessageBox.question(
-            self, "清空", "确定清空当前分组的所有项目吗？\n（抽出项目也将一并清空）",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            self,
+            "清空",
+            "确定清空当前分组的所有项目吗？\n（抽出项目也将一并清空）",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
         if reply == QMessageBox.StandardButton.Yes:
-            self.groups[self.current_group_index]['items'] = []
-            self.groups[self.current_group_index]['drawn_items'] = []
+            self.groups[self.current_group_index]["items"] = []
+            self.groups[self.current_group_index]["drawn_items"] = []
             self.updateWheelFromCurrentGroup()
             self.saveData()
 
@@ -978,7 +984,7 @@ class MainWindow(QMainWindow):
 
             # 检查是否还有项目可供抽取
             group = self.groups[self.current_group_index]
-            if not group['items'] or self.batch_remaining <= 0:
+            if not group["items"] or self.batch_remaining <= 0:
                 self._finishBatch()
                 return
 
@@ -999,7 +1005,7 @@ class MainWindow(QMainWindow):
             return
         if not self.groups or self.current_group_index < 0:
             return
-        items = self.groups[self.current_group_index]['items']
+        items = self.groups[self.current_group_index]["items"]
         if not items:
             QMessageBox.warning(self, "提示", "当前分组没有可抽取的项目！")
             return
@@ -1007,10 +1013,11 @@ class MainWindow(QMainWindow):
         n = self.batch_spinbox.value()
         if n > len(items):
             reply = QMessageBox.question(
-                self, "确认",
+                self,
+                "确认",
                 f"当前只有 {len(items)} 个项目，但请求抽取 {n} 次。\n"
                 f"抽取 {len(items)} 次后会自动停止。是否继续？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
@@ -1033,11 +1040,11 @@ class MainWindow(QMainWindow):
     def _autoExtract(self, index):
         """自动将结果移入抽出列表（按索引移除，避免重复文本误删）"""
         group = self.groups[self.current_group_index]
-        if 0 <= index < len(group['items']):
-            item_text = group['items'].pop(index)
-            if 'drawn_items' not in group:
-                group['drawn_items'] = []
-            group['drawn_items'].append(item_text)
+        if 0 <= index < len(group["items"]):
+            item_text = group["items"].pop(index)
+            if "drawn_items" not in group:
+                group["drawn_items"] = []
+            group["drawn_items"].append(item_text)
             self.updateWheelFromCurrentGroup()
 
     def _finishBatch(self):
@@ -1060,6 +1067,5 @@ class MainWindow(QMainWindow):
         geo = self.geometry()
         self.window_geometry = [geo.x(), geo.y(), geo.width(), geo.height()]
         self.splitter_sizes = self.splitter.sizes()
-        self.flushSave()   # 关窗不能丢数据：绕过去抖立即落盘
+        self.flushSave()  # 关窗不能丢数据：绕过去抖立即落盘
         super().closeEvent(event)
-

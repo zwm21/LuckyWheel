@@ -23,42 +23,64 @@ from luckywheel.ui import theme as ui_theme
 
 # 转盘扇区颜色池
 SECTOR_COLORS = [
-    QColor("#FF6B6B"), QColor("#4ECDC4"), QColor("#45B7D1"),
-    QColor("#96CEB4"), QColor("#FFEAA7"), QColor("#DDA0DD"),
-    QColor("#98D8C8"), QColor("#F7DC6F"), QColor("#BB8FCE"),
-    QColor("#85C1E9"), QColor("#F8C471"), QColor("#82E0AA"),
-    QColor("#F1948A"), QColor("#85929E"), QColor("#AED6F1"),
-    QColor("#E8DAEF"), QColor("#A3E4D7"), QColor("#FAD7A0"),
-    QColor("#D5F5E3"), QColor("#F9E79F"), QColor("#ABEBC6"),
+    QColor("#FF6B6B"),
+    QColor("#4ECDC4"),
+    QColor("#45B7D1"),
+    QColor("#96CEB4"),
+    QColor("#FFEAA7"),
+    QColor("#DDA0DD"),
+    QColor("#98D8C8"),
+    QColor("#F7DC6F"),
+    QColor("#BB8FCE"),
+    QColor("#85C1E9"),
+    QColor("#F8C471"),
+    QColor("#82E0AA"),
+    QColor("#F1948A"),
+    QColor("#85929E"),
+    QColor("#AED6F1"),
+    QColor("#E8DAEF"),
+    QColor("#A3E4D7"),
+    QColor("#FAD7A0"),
+    QColor("#D5F5E3"),
+    QColor("#F9E79F"),
+    QColor("#ABEBC6"),
     # 新增颜色
-    QColor("#E74C3C"), QColor("#3498DB"), QColor("#2ECC71"),
-    QColor("#F39C12"), QColor("#9B59B6"), QColor("#1ABC9C"),
-    QColor("#E67E22"), QColor("#C0392B"),
-    QColor("#16A085"), QColor("#8E44AD"), QColor("#D35400"),
+    QColor("#E74C3C"),
+    QColor("#3498DB"),
+    QColor("#2ECC71"),
+    QColor("#F39C12"),
+    QColor("#9B59B6"),
+    QColor("#1ABC9C"),
+    QColor("#E67E22"),
+    QColor("#C0392B"),
+    QColor("#16A085"),
+    QColor("#8E44AD"),
+    QColor("#D35400"),
 ]
 
 
 class WheelWidget(QWidget):
     """转盘绘制与旋转逻辑"""
+
     spinStarted = pyqtSignal()
     spinFinished = pyqtSignal(int, str)  # 扇区索引, 项目文字
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.items = []
-        self.rotation = 0.0          # 当前旋转角度（度，规范化到 [0, 360)）
+        self.rotation = 0.0  # 当前旋转角度（度，规范化到 [0, 360)）
         self.spinning = False
         self.result_text = ""
         self.font_family = "汉仪文黑-65W"
         self.shadow_enabled = True
-        self.cached_pixmap = None    # 离屏转盘图像（不含旋转）
-        self.cached_size = None      # 上次生成缓存时的逻辑边长 min(w, h)
-        self.cached_dpr = None       # 上次生成缓存时的 devicePixelRatio
-        self.font_size = 0           # 0=自动，>0=固定像素大小
-        self._font_size_cache = {}   # (文本, 字体, 初始字号, 宽限, 高限) -> 实际字号
-        self.plan = None             # 当前旋转计划（core.spin.SpinPlan）
-        self.animation = None        # 驱动计划时间轴的 QVariantAnimation
-        self.speed_scale = 1.0       # 动画时长除数：>1 加速（冒烟/测试用）
+        self.cached_pixmap = None  # 离屏转盘图像（不含旋转）
+        self.cached_size = None  # 上次生成缓存时的逻辑边长 min(w, h)
+        self.cached_dpr = None  # 上次生成缓存时的 devicePixelRatio
+        self.font_size = 0  # 0=自动，>0=固定像素大小
+        self._font_size_cache = {}  # (文本, 字体, 初始字号, 宽限, 高限) -> 实际字号
+        self.plan = None  # 当前旋转计划（core.spin.SpinPlan）
+        self.animation = None  # 驱动计划时间轴的 QVariantAnimation
+        self.speed_scale = 1.0  # 动画时长除数：>1 加速（冒烟/测试用）
 
         # 允许被窗口压缩到较小尺寸；实际绘制半径由 min(width, height) 决定，
         # 因此始终保持圆形比例不变形
@@ -123,7 +145,7 @@ class WheelWidget(QWidget):
         # ---------- 绘制扇形（无旋转） ----------
         num = len(self.items)
         sector_span = 360.0 / num
-        sector_colors = []   # 每个扇区实际使用的底色，供下方文字对比色查询
+        sector_colors = []  # 每个扇区实际使用的底色，供下方文字对比色查询
 
         painter.translate(center)
         for i in range(num):
@@ -135,8 +157,7 @@ class WheelWidget(QWidget):
             painter.setPen(QPen(Qt.GlobalColor.white, 2))
             path = QPainterPath()
             path.moveTo(0, 0)
-            path.arcTo(QRectF(-radius, -radius, radius * 2, radius * 2),
-                       start_angle, span_angle)
+            path.arcTo(QRectF(-radius, -radius, radius * 2, radius * 2), start_angle, span_angle)
             path.lineTo(0, 0)
             painter.drawPath(path)
         painter.resetTransform()
@@ -181,7 +202,7 @@ class WheelWidget(QWidget):
             # 文字在 pixmap 中的位置（center 是 pixmap 中心，与 widget 中心相同计算方式）
             painter.save()
             painter.translate(center.x() + lx, center.y() + ly)
-            painter.rotate(mid_angle_deg)   # 注意此处直接使用 mid_angle_deg，不再加 rotation
+            painter.rotate(mid_angle_deg)  # 注意此处直接使用 mid_angle_deg，不再加 rotation
 
             rect = QRectF(-text_w / 2, -text_h / 2, text_w, text_h)
 
@@ -215,7 +236,7 @@ class WheelWidget(QWidget):
         self.cached_pixmap = None
         self.cached_size = None
         self.cached_dpr = None
-        self._font_size_cache.clear()   # 不同字体的度量不同，缓存不得沿用
+        self._font_size_cache.clear()  # 不同字体的度量不同，缓存不得沿用
         self.update()
 
     def setItems(self, items):
@@ -309,8 +330,11 @@ class WheelWidget(QWidget):
 
         # 需要重建缓存的情况：缓存缺失、边长变化，或窗口被移到不同
         # devicePixelRatio 的屏幕上
-        if (self.cached_pixmap is None or self.cached_size != side
-                or self.cached_dpr != self.devicePixelRatio()):
+        if (
+            self.cached_pixmap is None
+            or self.cached_size != side
+            or self.cached_dpr != self.devicePixelRatio()
+        ):
             self.renderCache()
 
         if self.cached_pixmap is None:
@@ -343,8 +367,11 @@ class WheelWidget(QWidget):
         font.setBold(True)
         font.setPixelSize(int(radius * 0.08))
         painter.setFont(font)
-        painter.drawText(QRectF(-radius * 0.1, -radius * 0.1, radius * 0.2, radius * 0.2),
-                         Qt.AlignmentFlag.AlignCenter, "GO")
+        painter.drawText(
+            QRectF(-radius * 0.1, -radius * 0.1, radius * 0.2, radius * 0.2),
+            Qt.AlignmentFlag.AlignCenter,
+            "GO",
+        )
         painter.restore()
 
         # 指针
@@ -352,11 +379,13 @@ class WheelWidget(QWidget):
         wheel_radius = min(self.width(), self.height()) * 0.44
         pointer_tip = QPointF(center.x(), center.y() - wheel_radius + 5)
         pointer_size = 20
-        pointer = QPolygonF([
-            pointer_tip,
-            QPointF(pointer_tip.x() - pointer_size / 2, pointer_tip.y() - pointer_size),
-            QPointF(pointer_tip.x() + pointer_size / 2, pointer_tip.y() - pointer_size)
-        ])
+        pointer = QPolygonF(
+            [
+                pointer_tip,
+                QPointF(pointer_tip.x() - pointer_size / 2, pointer_tip.y() - pointer_size),
+                QPointF(pointer_tip.x() + pointer_size / 2, pointer_tip.y() - pointer_size),
+            ]
+        )
         painter.setBrush(QBrush(QColor("#FF0000")))
         painter.setPen(QPen(Qt.GlobalColor.white, 2))
         painter.drawPolygon(pointer)
