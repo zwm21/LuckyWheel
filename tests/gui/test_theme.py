@@ -46,7 +46,7 @@ class TestNoStylesheetOnScrollableWidgets:
             styles = ui_theme.card_styles(name)
             assert set(styles) == {
                 "single_frame", "batch_frame", "single_title",
-                "batch_title", "batch_log_label", "result_label", "handle",
+                "batch_title", "batch_log_label", "result_label",
             }
 
 
@@ -62,8 +62,6 @@ class TestCardStyleValues:
         assert styles["single_title"] == "color: #555; background: transparent; border: none;"
         assert styles["batch_log_label"] == "color: #666; background: transparent; border: none;"
         assert styles["result_label"] == "font-weight: bold; color: #333;"
-        assert styles["handle"] == (
-            "QFrame { background: #eee; border: 1px solid #ccc; }")
 
     def test_dark_cards_match_legacy_values(self):
         styles = ui_theme.card_styles("dark")
@@ -74,8 +72,6 @@ class TestCardStyleValues:
         assert styles["single_title"] == "color: #AAA; background: transparent; border: none;"
         assert styles["batch_log_label"] == "color: #AAA; background: transparent; border: none;"
         assert styles["result_label"] == "font-weight: bold; color: #E0E0E0;"
-        assert styles["handle"] == (
-            "QFrame { background: #4A4A4A; border: 1px solid #555; }")
 
     def test_themes_differ_only_in_colors(self):
         """模板单份的证据：两套样式的结构骨架相同，只有色值不同。"""

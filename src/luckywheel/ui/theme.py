@@ -84,16 +84,12 @@ _TOKENS = {
         "title": "#555",
         "muted": "#666",
         "result": "#333",
-        "handle_bg": "#eee",
-        "handle_border": "#ccc",
     },
     "dark": {
         "card_bg": "#3D3D3D",
         "title": "#AAA",
         "muted": "#AAA",
         "result": "#E0E0E0",
-        "handle_bg": "#4A4A4A",
-        "handle_border": "#555",
     },
 }
 
@@ -102,7 +98,6 @@ _CARD = "QFrame {{ background: {card_bg}; border: none; border-radius: 4px;{padd
 _PADDED = " padding: 4px;"
 _LABEL = "color: {color}; background: transparent; border: none;"
 _RESULT = "font-weight: bold; color: {result};"
-_HANDLE = "QFrame {{ background: {handle_bg}; border: 1px solid {handle_border}; }}"
 
 
 def card_styles(theme_name):
@@ -115,7 +110,6 @@ def card_styles(theme_name):
         "batch_title": _LABEL.format(color=t["title"]),
         "batch_log_label": _LABEL.format(color=t["muted"]),
         "result_label": _RESULT.format(**t),
-        "handle": _HANDLE.format(**t),
     }
 
 
@@ -136,7 +130,3 @@ def apply_theme(window, dark):
         widget = getattr(window, name, None)
         if widget is not None:
             widget.setStyleSheet(styles[name])
-    for name in ("splitter_handle", "drawn_splitter_handle"):
-        widget = getattr(window, name, None)
-        if widget is not None:
-            widget.setStyleSheet(styles["handle"])
