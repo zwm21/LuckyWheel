@@ -125,7 +125,7 @@ class TestSeededPlan:
     def test_fixed_seed_gives_expected_winner(self, qtbot, fast_wheel, monkeypatch):
         """以固定 seed 驱动 plan_spin：整条动画链路的结果可复现。"""
         rng = random.Random(20260920)
-        monkeypatch.setattr("main.random", rng)
+        monkeypatch.setattr("luckywheel.ui.wheel.random", rng)
         fast_wheel.setItems(["A", "B", "C", "D", "E", "F", "G"])
         captured = []
         fast_wheel.spinFinished.connect(lambda i, t: captured.append(i))

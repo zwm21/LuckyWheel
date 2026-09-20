@@ -18,6 +18,7 @@ from PyQt6.QtGui import QColor
 
 import main as legacy_main
 from luckywheel.ui import theme as ui_theme
+from luckywheel.ui import wheel as wheel_module
 from main import SECTOR_COLORS, WheelWidget
 
 
@@ -167,7 +168,7 @@ class TestKnownDefects:
             QColor("#123456"),
             QColor("#ABCDEF"),
         ]
-        monkeypatch.setattr(legacy_main, "SECTOR_COLORS", palette)
+        monkeypatch.setattr(wheel_module, "SECTOR_COLORS", palette)
         seen = []
         monkeypatch.setattr(
             ui_theme, "contrast_text_color",
