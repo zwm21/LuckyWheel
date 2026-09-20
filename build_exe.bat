@@ -5,6 +5,14 @@ title 一键打包 LuckyWheel
 :: 进入脚本所在目录
 cd /d "%~dp0"
 
+echo [*] 检查 Python 环境...
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [X] 未找到 python，请先安装 Python 3.9+ 并加入 PATH。
+    pause
+    exit /b 1
+)
+
 echo [*] 检查 PyInstaller 是否安装...
 pyinstaller --version >nul 2>&1
 if %errorlevel% neq 0 (
@@ -17,22 +25,15 @@ if %errorlevel% neq 0 (
     )
 )
 
-echo [*] 开始打包，请稍候...
-pyinstaller --onefile --windowed --name="LuckyWheel" --add-data "HYWenHei-65W.ttf;." main.py
-
-if %errorlevel% equ 0 (
-    echo.
-    echo ==========================================
-    echo [√] 打包成功！
-    echo exe 文件位于: %~dp0dist\LuckyWheel.exe
-    echo ==========================================
-    echo.
-    echo [*] 清理临时文件...
-    if exist build rmdir /s /q build
-    if exist LuckyWheel.spec del /q LuckyWheel.spec
-    echo [√] 清理完成
-) else (
-    echo [X] 打包失败，请检查错误信息。
+echo [*] 开始打包（字体可选，详见 assets\fonts\README.md）...
+python "%~dp0scripts\build_exe.py"
+if %errorlevel% neq 0 (
+    echo [X] 打包失败，请检查上方错误信息。
+    pause
+    exit /b 1
 )
 
+echo.
+echo [√] 打包完成，exe 文件位于: %~dp0dist\LuckyWheel.exe
+echo.
 pause

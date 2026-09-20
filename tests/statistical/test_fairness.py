@@ -10,7 +10,6 @@
 的均匀性检验（目标相对偏差 < 1.5%），并以本文件的基线数字作为对照。
 """
 
-import math
 import random
 
 import pytest
@@ -26,9 +25,9 @@ POINTER_ANGLE = 270.0  # 指针固定在 12 点
 def legacy_total_rotation(v0):
     """闭式复刻旧物理：总转角（与逐帧模拟逐点一致，误差 0）。"""
     m = 1
-    while v0 * FRICTION ** m >= STOP_THRESHOLD:
+    while v0 * FRICTION**m >= STOP_THRESHOLD:
         m += 1
-    return TIMER_INTERVAL * v0 * (1 - FRICTION ** m) / (1 - FRICTION)
+    return TIMER_INTERVAL * v0 * (1 - FRICTION**m) / (1 - FRICTION)
 
 
 def legacy_draw_rotation(rng):
@@ -54,9 +53,7 @@ class TestLegacyFairnessBaseline:
             hits[sector_at(legacy_draw_rotation(rng), count)] += 1
         rel = [h / trials * count - 1.0 for h in hits]  # 相对偏差
         # 基线实测：n=4 约 +10.6%，n=8 约 +11~13%，n=10 约 +12.7%
-        assert max(rel) > 0.05, (
-            f"n={count} 相对偏差 {[f'{x:+.1%}' for x in rel]} 应显著大于 5%"
-        )
+        assert max(rel) > 0.05, f"n={count} 相对偏差 {[f'{x:+.1%}' for x in rel]} 应显著大于 5%"
         assert max(rel) < 0.20, "偏差不应超过理论上界 16.7%"
 
     def test_rotation_span_is_6_25_turns(self):
@@ -74,7 +71,7 @@ class TestLegacyFairnessBaseline:
         for _ in range(600_000):
             angle = (POINTER_ANGLE - legacy_draw_rotation(rng)) % 360.0
             bins[int(angle / 5.0)] += 1
-        expected = trials_per_bin = 600_000 / 72
+        expected = 600_000 / 72
         inside = [bins[b] for b in range(72) if 1.5 < b * 5 + 2.5 < 97.5]
         outside = [bins[b] for b in range(72) if not (1.5 < b * 5 + 2.5 < 97.5)]
         mean_inside = sum(inside) / len(inside) / expected

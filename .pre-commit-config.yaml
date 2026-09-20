@@ -1,0 +1,35 @@
+# pre-commit 配置：https://pre-commit.com
+# 本地安装：pip install pre-commit && pre-commit install
+# 手动全量执行：pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v1.9.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-json
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # 本地守卫：拒绝把 dist/ 二进制与用户字体暂存进仓库。
+  # 历史因 8 次提交 37MB exe 使 .git 膨胀到 289MB，此 hook 防止重蹈。
+  - repo: local
+    hooks:
+      - id: no-dist-or-fonts
+        name: reject dist/ binaries and bundled fonts
+        entry: python scripts/precommit_no_binaries.py
+        language: system
+        pass_filenames: true
+        types: [text]

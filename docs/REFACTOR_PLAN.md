@@ -160,9 +160,9 @@ def fit_font_size(text, max_w, max_h, measure, *, start_px, min_px=8) -> int
 
 同期补上 LICENSE、CHANGELOG、`.gitattributes`（统一换行符，标记二进制），以及 `.pre-commit-config.yaml`：ruff + ruff-format + check-json + end-of-file-fixer，再加一条本地 hook 直接拒绝任何 `dist/` 下的暂存文件，防止重蹈覆辙。CI 用 `ci.yml` 在 Windows + Python 3.10/3.12/3.13 上跑 lint 与 offscreen 测试。
 
-字体按「可选并降级」处理：`packaging/build.py` 检测 `assets/fonts/HYWenHei-65W.ttf` 是否存在，存在才追加 `--add-data`，不存在就打印提示继续打包；运行时 `fonts.py` 沿用已有的回退逻辑（找不到内嵌字体则用 Microsoft YaHei）。README 说明字体需自备及其版权归属。仓库任何时候都不包含该文件。
+字体按「可选并降级」处理：`scripts/build_exe.py` 检测 `assets/fonts/HYWenHei-65W.ttf` 是否存在，存在才追加 `--add-data`，不存在就打印提示继续打包；运行时 `fonts.py` 沿用已有的回退逻辑（找不到内嵌字体则用 Microsoft YaHei）。README 说明字体需自备及其版权归属。仓库任何时候都不包含该文件。
 
-验收：`git count-objects -vH` 显示体积大幅下降；全新 `git clone` 后无需额外文件即可 `python -m luckywheel` 运行、`python packaging/build.py` 成功打包。
+验收：`git count-objects -vH` 显示体积大幅下降；全新 `git clone` 后无需额外文件即可 `python -m luckywheel` 运行、`python scripts/build_exe.py` 成功打包。
 
 ### 2.3 阶段 2：抽离 core 层
 

@@ -1,0 +1,15 @@
+# 统一换行符：仓库内文本一律 LF，避免 Windows/Unix 协作时全仓库 diff
+* text=auto eol=lf
+
+# 明确二进制类型：不做转换、不做合并
+*.exe binary
+*.ttf binary
+*.otf binary
+*.png binary
+*.ico binary
+
+# JSON/YAML/TOML 显式按文本处理
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf

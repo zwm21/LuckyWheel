@@ -49,6 +49,7 @@ def isolate_data_file(window):
 
 def make_app():
     from PyQt6.QtWidgets import QApplication
+
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
@@ -79,8 +80,10 @@ def wait(predicate, timeout, interval=0.005, app=None):
 def load_window(entry, app):
     if entry == "main":
         import main as legacy
+
         return legacy.MainWindow()
     from luckywheel.app import run
+
     return run(app)
 
 
@@ -102,20 +105,25 @@ def verify(window, app):
     app.processEvents()
     check("分组下拉有选项", lambda: require(window.group_combo.count() > 0, "无分组"), failures)
     check("转盘已装配项目", lambda: require(len(window.wheel.items) > 0, "转盘为空"), failures)
-    check("列表与转盘项目一致",
-          lambda: require(window.list_widget.count() == len(window.wheel.items), "数量不一致"),
-          failures)
+    check(
+        "列表与转盘项目一致",
+        lambda: require(window.list_widget.count() == len(window.wheel.items), "数量不一致"),
+        failures,
+    )
     shot("startup.png")
 
     print("== 主题切换 ==")
     for idx, label in enumerate(("浅色", "深色", "跟随系统")):
+
         def switch(i=idx, lb=label):
             window.theme_combo.setCurrentIndex(i)
             app.processEvents()
+
         check(f"切换到{label}", switch, failures)
         shot(f"theme_{label}.png")
 
     print("== 单次旋转 ==")
+
     def single_spin():
         items = window.groups[window.current_group_index]["items"]
         window.wheel.setItems(items or ["A", "B", "C"])
@@ -125,10 +133,12 @@ def verify(window, app):
         window.wheel.startSpin()
         require(wait(lambda: not window.wheel.spinning, SPIN_TIMEOUT * 3, app=app), "旋转超时")
         require(bool(window.result_label.text()), "结果标签为空")
+
     check("旋转到停止并显示结果", single_spin, failures)
     shot("after_spin.png")
 
     print("== 批量抽取 ==")
+
     def batch_spin():
         window.wheel.friction = 0.98
         window.wheel.timer_interval = 30
@@ -138,22 +148,31 @@ def verify(window, app):
         if before == 0:
             return  # 空分组无可抽，跳过
         window.startBatchSpin()
-        require(wait(lambda: window.batch_remaining <= 0 and not window.btn_stop_batch.isEnabled(),
-                     SPIN_TIMEOUT * 6, app=app), "批量抽取超时")
+        require(
+            wait(
+                lambda: window.batch_remaining <= 0 and not window.btn_stop_batch.isEnabled(),
+                SPIN_TIMEOUT * 6,
+                app=app,
+            ),
+            "批量抽取超时",
+        )
         after = len(window.groups[window.current_group_index]["items"])
         drawn = len(window.groups[window.current_group_index].get("drawn_items", []))
         require(after < before, f"项目数未减少：{before} -> {after}")
         require(drawn > 0, "抽出列表为空")
+
     check("不放回批量抽取", batch_spin, failures)
     shot("after_batch.png")
 
     print("== 数据 ==")
+
     def roundtrip():
         window.saveData()
         with open(window.data_file, encoding="utf-8") as f:
             data = json.load(f)
         require("groups" in data, "数据文件缺少 groups")
         require(data["groups"][0]["items"] is not None, "items 为 None")
+
     check("保存后数据文件可读回", roundtrip, failures)
 
     print("== 关闭 ==")

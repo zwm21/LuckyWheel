@@ -172,6 +172,11 @@ class TestDeadCode:
         """阶段 3 清理后本文件应删除：QPropertyAnimation, QEasingCurve,
         QFontMetrics, QAction, QFileDialog 五个导入从未使用。"""
         src = open(legacy_main.__file__, encoding="utf-8").read()
-        for name in ("QPropertyAnimation", "QEasingCurve",
-                     "QFontMetrics", "QAction", "QFileDialog"):
+        for name in (
+            "QPropertyAnimation",
+            "QEasingCurve",
+            "QFontMetrics",
+            "QAction",
+            "QFileDialog",
+        ):
             assert src.count(name) == 1, f"{name} 应只剩导入行一处引用"
