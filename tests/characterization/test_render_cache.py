@@ -4,7 +4,8 @@
 - 字号自适应：等宽/不等宽文本下二分结果与原逐像素递减逐点一致；
   重复文本只测量一次，换字体后不得沿用缓存；
 - 转盘缓存：仅 min(w, h) 变化时失效；画布按 devicePixelRatio 放大，
-  cached_size 仍记逻辑边长；dpr 变化必须重渲染。
+  cached_size 仍记逻辑边长；dpr 变化必须重渲染；绘制内容的有效缩放
+  恰为 dpr，不得与 QPixmap 自身的 dpr 缩放叠加成 dpr^2。
 
 本文件与 test_current_main_behavior.py 的分工：那份钉住单文件阶段的
 旧实现与已知缺陷，这份钉住重构改动的语义等价面。
@@ -221,6 +222,17 @@ class TestCacheGuardOnResize:
         assert wheel.cached_pixmap is current, "几何未变时 paintEvent 不得重建缓存"
 
 
+def _opaque_bbox(img):
+    """不透明像素的设备像素 bbox，None 表示整图透明。"""
+    x0, y0, x1, y1 = img.width(), img.height(), -1, -1
+    for y in range(img.height()):
+        for x in range(img.width()):
+            if (img.pixel(x, y) >> 24) & 0xFF > 200:
+                x0, x1 = min(x0, x), max(x1, x)
+                y0, y1 = min(y0, y), max(y1, y)
+    return None if x1 < 0 else (x0, y0, x1, y1)
+
+
 class TestHighDpiCanvas:
     """画布按 devicePixelRatio 放大，逻辑坐标不变。"""
 
@@ -236,6 +248,50 @@ class TestHighDpiCanvas:
         assert wheel.cached_pixmap.width() == expected
         assert wheel.cached_pixmap.devicePixelRatio() == dpr
         assert wheel.cached_size == 400, "cached_size 保持逻辑边长，守卫语义不变"
+
+    @pytest.mark.parametrize("dpr", [1.0, 1.5, 2.0])
+    def test_drawn_wheel_is_centered_and_unclipped(self, qtbot, monkeypatch, dpr):
+        """绘制内容的有效缩放必须恰为 dpr，不得叠加成 dpr^2。
+
+        QPixmap 设了 devicePixelRatio 后其 QPainter 坐标已自动按 dpr 缩放，
+        若再手动 painter.scale(dpr, dpr) 便叠加成 dpr^2：转盘被放大并移出
+        画布，dpr=1 时 1^2=1 无差别，故离屏测试与仅断言画布尺寸的特征测试
+        都无法暴露。此处用不透明像素 bbox 同时钉住"居中"与"不触边"——
+        dpr^2 下跨度可能仍接近期望值，但圆心必然偏移且被画布裁切。
+        """
+        side = 400
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        wheel.setItems([f"ITEM{i:02d}" for i in range(12)])
+        wheel.resize(side, side)
+        monkeypatch.setattr(wheel, "devicePixelRatio", lambda: dpr)
+
+        wheel.renderCache()
+        img = wheel.cached_pixmap.toImage()
+        bbox = _opaque_bbox(img)
+        assert bbox is not None
+
+        canvas = side * dpr
+        center = canvas / 2.0
+        radius = side * 0.88 / 2.0
+        expected_span = 2.0 * radius * dpr
+
+        x0, y0, x1, y1 = bbox
+        actual_center = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        for axis, value in zip("xy", actual_center):
+            assert abs(value - center) <= 3.0 * dpr, (
+                f"{axis} 方向圆心偏移：{value:.1f} != {center:.1f}"
+            )
+
+        actual_span = (x1 - x0, y1 - y0)
+        for axis, value in zip("xy", actual_span):
+            # 容差覆盖 2px 白色描边向外扩出的约 1 逻辑像素与抗锯齿
+            assert abs(value - expected_span) <= 6.0 * dpr, (
+                f"{axis} 方向跨度 {value:.0f} != {expected_span:.0f}"
+            )
+
+        for axis, (lo, hi) in zip("xy", ((x0, x1), (y0, y1))):
+            assert 0 < lo and hi < canvas - 1, f"{axis} 方向触达画布边缘（内容被裁切）：{(lo, hi)}"
 
     def test_dpr_change_forces_rerender(self, qtbot, monkeypatch):
         """窗口移到另一 DPI 的屏幕上（边长不变）也必须重渲染。"""

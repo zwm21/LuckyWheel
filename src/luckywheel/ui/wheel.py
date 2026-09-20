@@ -129,8 +129,11 @@ class WheelWidget(QWidget):
         radius = wheel_diameter / 2.0
         center = QPointF(side / 2.0, side / 2.0)
 
-        # 按 devicePixelRatio 放大画布，高 DPI 屏幕下不做插值放大；
-        # 之后所有绘制仍用逻辑像素坐标（painter.scale 负责换算）
+        # 按 devicePixelRatio 放大画布，高 DPI 屏幕下不做插值放大。
+        # 注意：QPixmap 设置了 devicePixelRatio 后，其 QPainter 的坐标系
+        # 会自动按 dpr 缩放（图元与文字均以设备分辨率渲染），因此此处
+        # 绝不能再手动 painter.scale(dpr, dpr)——那会叠加成 dpr² 缩放，
+        # 整个转盘被放大并移出画布（dpr=1 时 1²=1 无差别，故难以察觉）。
         dpr = self.devicePixelRatio()
         if dpr <= 0:
             dpr = 1.0
@@ -140,13 +143,13 @@ class WheelWidget(QWidget):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.scale(dpr, dpr)
 
         # ---------- 绘制扇形（无旋转） ----------
         num = len(self.items)
         sector_span = 360.0 / num
         sector_colors = []  # 每个扇区实际使用的底色，供下方文字对比色查询
 
+        painter.save()
         painter.translate(center)
         for i in range(num):
             start_angle = i * sector_span
@@ -160,7 +163,7 @@ class WheelWidget(QWidget):
             path.arcTo(QRectF(-radius, -radius, radius * 2, radius * 2), start_angle, span_angle)
             path.lineTo(0, 0)
             painter.drawPath(path)
-        painter.resetTransform()
+        painter.restore()
 
         # ---------- 绘制文字（完全沿用原版逻辑，仅将全局坐标改为未旋转下的固定位置） ----------
         text_radius = radius * 0.62

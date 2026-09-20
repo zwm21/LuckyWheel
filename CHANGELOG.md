@@ -39,6 +39,12 @@
 - 窗口几何恢复时不做屏幕边界校验，副屏未连接时窗口可能位于屏幕外。
 - 深色主题下含滚动条控件若单独设 QSS 会切到 `QStyleSheetStyle` 渲染导致颜色
   错误（回归测试固定该约束）。
+- **高 DPI 下转盘错乱**：`renderCache` 在已 `setDevicePixelRatio(dpr)` 的
+  QPixmap 上又手动 `painter.scale(dpr, dpr)`，与 Qt 自身的 dpr 缩放叠加成
+  dpr²，转盘被放大并移出画布。Windows 125%/150%/200% 缩放下必现；dpr=1 时
+  1²=1 无差别，故 offscreen 冒烟与仅断言画布尺寸的特征测试都无法暴露。已删除
+  手动缩放，特征测试改为按不透明像素 bbox 断言"居中且不触边"（dpr² 下跨度可能
+  仍接近期望值，但圆心必然偏移并被画布裁切，故居中断言才是关键）。
 
 ### 移除
 - `dist/LuckyWheel.exe` 出版本控制（改由 GitHub Release 分发）。历史重写前
