@@ -36,6 +36,25 @@ SECTOR_COLORS = [
     QColor("#16A085"), QColor("#8E44AD"), QColor("#D35400"),
 ]
 
+
+def relative_luminance(color):
+    """WCAG 相对亮度：sRGB 线性化后按 Rec.709 权重加权，范围 [0, 1]。"""
+    def channel(value):
+        c = value / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    return (
+        0.2126 * channel(color.red())
+        + 0.7152 * channel(color.green())
+        + 0.0722 * channel(color.blue())
+    )
+
+
+def contrast_text_color(background):
+    """按背景相对亮度选择黑/白文字，保证可读性。"""
+    return Qt.GlobalColor.white if relative_luminance(background) < 0.5 else Qt.GlobalColor.black
+
+
 def loadEmbeddedFont(font_filename):
     """加载内嵌字体并返回族名，失败返回 None"""
     # PyInstaller 打包后解压路径
@@ -160,12 +179,14 @@ class WheelWidget(QWidget):
         # ---------- 绘制扇形（无旋转） ----------
         num = len(self.items)
         sector_span = 360.0 / num
-    
+        sector_colors = []   # 每个扇区实际使用的底色，供下方文字对比色查询
+
         painter.translate(center)
         for i in range(num):
             start_angle = i * sector_span
             span_angle = sector_span
             color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
+            sector_colors.append(color)
             painter.setBrush(QBrush(color))
             painter.setPen(QPen(Qt.GlobalColor.white, 2))
             path = QPainterPath()
@@ -218,9 +239,10 @@ class WheelWidget(QWidget):
 
             rect = QRectF(-text_w / 2, -text_h / 2, text_w, text_h)
 
-            # 阴影与主体文字（阈值与原版相同的 > 50）
-            color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
-            text_color = Qt.GlobalColor.black if color.lightness() > 50 else Qt.GlobalColor.white
+            # 对比色取文字实际所在扇区的底色：arcTo 的正向扫掠与
+            # (cosθ, sinθ) 参数化方向相反，文字 i 落在扇区 num-1-i 上，
+            # 而非 SECTOR_COLORS[i]。调色板全为亮色时取错也不可见。
+            text_color = contrast_text_color(sector_colors[num - 1 - i])
             if self.shadow_enabled:
                 painter.setPen(QColor(0, 0, 0, 120))
                 painter.drawText(rect.translated(1, 1), Qt.AlignmentFlag.AlignCenter, item)

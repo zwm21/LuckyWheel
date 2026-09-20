@@ -13,7 +13,8 @@ import math
 import shutil
 
 import pytest
-from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QColor
 
 import main as legacy_main
 from main import SECTOR_COLORS, WheelWidget
@@ -118,10 +119,13 @@ class TestKnownDefects:
     应显式更新并写入 CHANGELOG，而不是删除。
     """
 
-    def test_text_color_uses_mirrored_sector(self, qtbot):
-        """item i 的文字实际落在 SECTOR_COLORS[n-1-i] 的扇区上，
-        而对比色判定取的是 SECTOR_COLORS[i] —— 取错底色。
-        根因：QPainterPath.arcTo 的正角度扫掠方向与 (cosθ, sinθ) 参数化相反。"""
+    def test_text_lands_on_mirrored_sector(self, qtbot):
+        """文字 i 实际绘制在 SECTOR_COLORS[n-1-i] 的扇区上（几何事实）。
+
+        根因：QPainterPath.arcTo 的正角度扫掠方向与 (cosθ, sinθ) 参数化方向
+        相反。这不影响指针指向的一致性（扇区边界集合在镜像下自映射），
+        但文字对比色必须按 num-1-i 取底色，见下一条用例。
+        """
         n = 4
         wheel = WheelWidget()
         qtbot.addWidget(wheel)
@@ -143,6 +147,53 @@ class TestKnownDefects:
             assert sampled.name().lower() == mirrored.name().lower(), (
                 f"item {i} 的文字应落在 SECTOR_COLORS[{n - 1 - i}] 扇区"
             )
+
+    def test_text_contrast_uses_actual_background(self, qtbot, monkeypatch):
+        """对比色必须取文字实际所在扇区（num-1-i）的底色，而不是 SECTOR_COLORS[i]。
+
+        旧实现按 SECTOR_COLORS[i] 判定，遇到深色扇区会给出黑字深底。调色板全亮
+        时该错误不可见（见 test_palette_all_bright_so_defect_is_invisible）。
+
+        与 test_text_lands_on_mirrored_sector 的分工：那条钉住"文字 i 的墨迹落在
+        扇区 num-1-i 上"（几何事实），本条钉住"对比色查询的底色就是 sector_colors
+        [num-1-i]"（取值来源）。两者合起来才覆盖渲染里的那一行。用记录器替换
+        contrast_text_color 而不是采样像素：离屏渲染下文字依赖字体 fallback，
+        墨迹位置与大小都不稳定，像素采样无法作为判据。
+        """
+        palette = [
+            QColor("#101820"),  # 深色：若取错底色，对应文字会是黑字深底
+            QColor("#FAF3DD"),
+            QColor("#123456"),
+            QColor("#ABCDEF"),
+        ]
+        monkeypatch.setattr(legacy_main, "SECTOR_COLORS", palette)
+        seen = []
+        monkeypatch.setattr(
+            legacy_main, "contrast_text_color",
+            lambda background: seen.append(background.name()) or Qt.GlobalColor.black,
+        )
+
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        wheel.setItems(["A", "B", "C", "D"])
+        wheel.resize(800, 800)
+        wheel.renderCache()
+
+        # 文字 i 查询的底色必须依次是 sector_colors[3]、[2]、[1]、[0]，即镜像序列
+        expected = [palette[3].name(), palette[2].name(), palette[1].name(), palette[0].name()]
+        assert seen == expected, "对比色应按 num-1-i 取文字实际所在扇区的底色"
+
+    def test_contrast_threshold_uses_relative_luminance(self):
+        """阈值基于 WCAG 相对亮度而非 HSL lightness：同 lightness 不同色相结果不同。"""
+        # 两者 HSL lightness 都是 50%（Qt 的 lightness() 走 0-255 刻度，故为 128），
+        # 但绿色的人眼亮度远高于蓝色
+        green = QColor("#00FF00")   # lightness 50%
+        blue = QColor("#0000FF")    # lightness 50%
+        assert green.lightness() == blue.lightness() == 128
+        assert legacy_main.contrast_text_color(green) == Qt.GlobalColor.black
+        assert legacy_main.contrast_text_color(blue) == Qt.GlobalColor.white
+        assert legacy_main.contrast_text_color(QColor("#FFFFFF")) == Qt.GlobalColor.black
+        assert legacy_main.contrast_text_color(QColor("#000000")) == Qt.GlobalColor.white
 
     def test_palette_all_bright_so_defect_is_invisible(self):
         """32 个调色板颜色 lightness 全部 > 50（实测 91-229），
