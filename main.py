@@ -3,7 +3,7 @@ import random
 import math
 import os
 
-from PyQt6.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
+from PyQt6.QtCore import (Qt, QTimer, QRect, QRectF, QPointF, pyqtSignal,
                           QVariantAnimation, QEvent)
 from PyQt6.QtGui import (QPainter, QColor, QFont, QPen,
                          QBrush, QPixmap, QPolygonF, QPainterPath,
@@ -314,7 +314,9 @@ class WheelWidget(QWidget):
         """设置转盘项目"""
         self.stopSpin()
         self.items = items
-        self.rotation = 0.0
+        # 注意：此处不再把 rotation 归零。旋转角是绘制相位，与项目列表
+        # 无关；换列表时保留当前角度可避免视觉上的跳变，也让 setItems
+        # 不会被误用作"重置转盘"的入口。
         self.cached_pixmap = None
         self.cached_size = None
         self.cached_dpr = None
@@ -439,8 +441,6 @@ class WheelWidget(QWidget):
     
         # 指针
         painter.save()
-        pointer_tip = QPointF(center.x(), center.y() - radius * 0.88 + 5)  # radius 是转盘半径
-        # 注意 radius 应该用 wheel_diameter/2 更准，需重新计算
         wheel_radius = min(self.width(), self.height()) * 0.44
         pointer_tip = QPointF(center.x(), center.y() - wheel_radius + 5)
         pointer_size = 20
@@ -1279,16 +1279,7 @@ class MainWindow(QMainWindow):
 
         self.setMinimumSize(850, 600)
 
-        if self.window_geometry:
-            self.setGeometry(*self.window_geometry)
-        else:
-            default_w, default_h = 1024, 700
-            self.resize(default_w, default_h)
-            # 居中显示
-            screen_geo = QApplication.primaryScreen().availableGeometry()
-            x = (screen_geo.width() - default_w) // 2
-            y = (screen_geo.height() - default_h) // 2
-            self.move(x, y)
+        self._applyWindowGeometry()
         # 初始化转盘字体
         self.shadow_checkbox.setChecked(self.shadow_enabled)
         self.wheel.setShadowEnabled(self.shadow_enabled)
@@ -1298,6 +1289,31 @@ class MainWindow(QMainWindow):
         # 应用保存的字体设置
         self.applyUIFont()
         self.applyWheelFont()
+
+    def _applyWindowGeometry(self):
+        """恢复保存的窗口几何；与所有屏幕都不相交时回退为默认居中。
+
+        副屏未连接时，按保存坐标摆放会把窗口放到屏幕外，用户看不到也
+        拖不回来。此处用全部屏幕 availableGeometry 的相交判定（虚拟
+        桌面坐标），副屏在线时正常恢复。
+        """
+        geometry = self.window_geometry
+        if geometry and len(geometry) == 4:
+            x, y, w, h = (int(v) for v in geometry)
+            rect = QRect(x, y, w, h)
+            screens = QApplication.screens() or []
+            if any(rect.intersects(s.availableGeometry()) for s in screens):
+                self.setGeometry(rect)
+                return
+        self._centerWindow(1024, 700)
+
+    def _centerWindow(self, width, height):
+        """按默认尺寸打开并居中到主屏可用区域。"""
+        self.resize(width, height)
+        screen_geo = QApplication.primaryScreen().availableGeometry()
+        x = (screen_geo.width() - width) // 2
+        y = (screen_geo.height() - height) // 2
+        self.move(x, y)
 
     # ================= 分组管理 =================
     # （以下方法保持不变，仅列出，未改动）
