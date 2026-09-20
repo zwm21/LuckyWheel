@@ -37,6 +37,11 @@ SECTOR_COLORS = [
 ]
 
 
+# 保存去抖窗口：字号微调、批量抽取每轮、拖拽排序等高频变更在此毫秒数内
+# 合并为一次落盘；关闭窗口等不能丢数据的时机走 flushSave 立即写入
+SAVE_DEBOUNCE_MS = 500
+
+
 def relative_luminance(color):
     """WCAG 相对亮度：sRGB 线性化后按 Rec.709 权重加权，范围 [0, 1]。"""
     def channel(value):
@@ -484,6 +489,12 @@ class MainWindow(QMainWindow):
         self.batch_spin_count = 3       # 批量抽取默认次数
         self.theme = "light"           # 背景主题: light / dark / system
         self.last_result_index = None   # 最近一次中奖扇区的索引（按索引抽出的依据）
+
+        # 保存去抖：saveData 只重置这个单次定时器，到点或 flushSave 才真正落盘
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(SAVE_DEBOUNCE_MS)
+        self._save_timer.timeout.connect(self.flushSave)
 
         # 数据文件路径：优先程序旁边（便携模式），不可写时回退用户数据目录
         data_path, relocated = core_paths.resolve_data_path()
@@ -938,6 +949,15 @@ class MainWindow(QMainWindow):
             self.saveData()
 
     def saveData(self):
+        """调度一次延迟保存：连续的高频变更在 500ms 内合并为一次落盘。
+
+        需要立即落盘的时机（关闭窗口）必须改用 flushSave。
+        """
+        self._save_timer.start()
+
+    def flushSave(self):
+        """取消待发的定时器并立即落盘。"""
+        self._save_timer.stop()
         try:
             state = AppState(
                 groups=[Group.from_dict(g) for g in self.groups],
@@ -1548,7 +1568,7 @@ class MainWindow(QMainWindow):
         geo = self.geometry()
         self.window_geometry = [geo.x(), geo.y(), geo.width(), geo.height()]
         self.splitter_sizes = self.splitter.sizes()
-        self.saveData()
+        self.flushSave()   # 关窗不能丢数据：绕过去抖立即落盘
         super().closeEvent(event)
 
 

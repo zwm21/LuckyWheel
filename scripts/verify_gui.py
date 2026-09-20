@@ -165,7 +165,7 @@ def verify(window, app):
     print("== 数据 ==")
 
     def roundtrip():
-        window.saveData()
+        window.flushSave()  # 去抖模式下 saveData 只调度，立即落盘须显式 flush
         with open(window.data_file, encoding="utf-8") as f:
             data = json.load(f)
         require("groups" in data, "数据文件缺少 groups")
