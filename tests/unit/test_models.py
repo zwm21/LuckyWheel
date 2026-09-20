@@ -80,7 +80,9 @@ class TestAppState:
     def test_clamp_bad_font_family(self):
         """字体家族会直接传给 QFont()，非字符串必须收敛。"""
         assert AppState.from_dict({"ui_font_family": 42}).ui_font_family == "Microsoft YaHei"
-        assert AppState.from_dict({"wheel_font_family": ["a"]}).wheel_font_family == "Microsoft YaHei"
+        assert (
+            AppState.from_dict({"wheel_font_family": ["a"]}).wheel_font_family == "Microsoft YaHei"
+        )
 
     def test_default_state_has_one_group(self):
         state = default_state()

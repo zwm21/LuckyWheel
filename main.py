@@ -415,6 +415,7 @@ class MainWindow(QMainWindow):
         self.batch_results = []         # 批量抽取结果日志
         self.batch_spin_count = 3       # 批量抽取默认次数
         self.theme = "light"           # 背景主题: light / dark / system
+        self.last_result_index = None   # 最近一次中奖扇区的索引（按索引抽出的依据）
 
         # 数据文件路径：优先程序旁边（便携模式），不可写时回退用户数据目录
         data_path, relocated = core_paths.resolve_data_path()
@@ -636,12 +637,9 @@ class MainWindow(QMainWindow):
         if not self.groups or self.current_group_index < 0:
             self.btn_extract.setEnabled(False)
             return
-        result = self.result_label.text().strip()
         items = self.groups[self.current_group_index]['items']
-        if result and items:
-            self.btn_extract.setEnabled(True)
-        else:
-            self.btn_extract.setEnabled(False)
+        has_result = self.last_result_index is not None
+        self.btn_extract.setEnabled(bool(has_result and items))
 
     def _updateBatchButtonState(self):
         """控制批量抽取按钮的可用状态"""
@@ -658,25 +656,17 @@ class MainWindow(QMainWindow):
         self.saveData()
 
     def extractDrawnItem(self):
-        """将抽签结果移出到抽出项目列表"""
+        """将抽签结果移出到抽出项目列表（按索引 pop，重复文本不会误删）"""
         if not self.groups or self.current_group_index < 0:
             return
+        index = self.last_result_index
         group = self.groups[self.current_group_index]
-        result = self.result_label.text().strip()
-        if not result:
+        if index is None or not 0 <= index < len(group['items']):
             return
-        # 提取项目文字（假设格式固定为“🎉 恭喜中奖: xxx”）
-        if result.startswith("🎉 恭喜中奖: "):
-            item_text = result.split("🎉 恭喜中奖: ", 1)[1]
-        else:
-            item_text = result
-        if item_text in group['items']:
-            group['items'].remove(item_text)
-            if 'drawn_items' not in group:
-                group['drawn_items'] = []
-            group['drawn_items'].append(item_text)
-            self.updateWheelFromCurrentGroup()
-            self.saveData()
+        item_text = group['items'].pop(index)
+        group.setdefault('drawn_items', []).append(item_text)
+        self.updateWheelFromCurrentGroup()  # 内部会清理 last_result_index
+        self.saveData()
 
     def returnDrawnItem(self):
         """将选中的抽出项目返回至抽签项目列表"""
@@ -1240,6 +1230,7 @@ class MainWindow(QMainWindow):
             self.list_widget.addItems(items)
             self.wheel.setItems(items)
             self.result_label.setText("")
+            self.last_result_index = None  # 数据已刷新，旧索引失效
             self.updateGroupCombo()
         else:
             self.list_widget.clear()
@@ -1390,11 +1381,12 @@ class MainWindow(QMainWindow):
     def onSpinFinished(self, index, text):
         """旋转结束时显示结果并恢复编辑"""
         self.result_label.setText(f"🎉 恭喜中奖: {text}")
+        self.last_result_index = index
 
         # 批量抽取模式
         if self.batch_remaining > 0:
             # 自动抽出当前结果
-            self._autoExtract(text)
+            self._autoExtract(index)
             self.batch_results.append(text)
             self.batch_remaining -= 1
             self.batch_log_label.setText(
@@ -1458,14 +1450,14 @@ class MainWindow(QMainWindow):
         self.batch_remaining = 0
         self._finishBatch()
 
-    def _autoExtract(self, text):
-        """自动将结果移入抽出列表（不等待用户点击抽出按钮）"""
+    def _autoExtract(self, index):
+        """自动将结果移入抽出列表（按索引移除，避免重复文本误删）"""
         group = self.groups[self.current_group_index]
-        if text in group['items']:
-            group['items'].remove(text)
+        if 0 <= index < len(group['items']):
+            item_text = group['items'].pop(index)
             if 'drawn_items' not in group:
                 group['drawn_items'] = []
-            group['drawn_items'].append(text)
+            group['drawn_items'].append(item_text)
             self.updateWheelFromCurrentGroup()
 
     def _finishBatch(self):
