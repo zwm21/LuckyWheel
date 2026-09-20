@@ -35,9 +35,8 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-# main.py 为待重构的遗留单文件（1516 行），阶段 4 拆分完成后移除此排除；
 # docs/ 是规划文档，其中的代码片段仅为引用示例，不做格式化
-exclude = ["main.py", "docs"]
+exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "I", "UP"]

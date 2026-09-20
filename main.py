@@ -10,9 +10,8 @@ MainWindow 本体、SECTOR_COLORS 调色板。
 
 import sys
 
-from luckywheel.ui.main_window import MainWindow, SAVE_DEBOUNCE_MS  # noqa: F401
+from luckywheel.ui.main_window import SAVE_DEBOUNCE_MS, MainWindow  # noqa: F401
 from luckywheel.ui.wheel import SECTOR_COLORS, WheelWidget  # noqa: F401
-
 
 if __name__ == "__main__":
     # PyQt6 默认启用高 DPI 缩放，无需手动设置
