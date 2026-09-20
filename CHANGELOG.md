@@ -10,7 +10,8 @@
 - `scripts/build_exe.py`：字体可选打包，不再要求仓库内置字体；GitHub Release
   自动构建（`.github/workflows/release.yml`）。
 - `tests/`：特征测试、统计检验、offscreen GUI 冒烟（`scripts/verify_gui.py`）。
-- CI（`.github/workflows/ci.yml`）：ruff + pytest（Windows，Python 3.10/3.12/3.13）。
+- CI（`.github/workflows/ci.yml`）：ruff + pytest + GUI 冒烟（Windows，
+  Python 3.10/3.12/3.13），`core/` 覆盖率门禁 70%。
 
 ### 变更
 - **抽奖公平性**：旧实现按随机初速度+摩擦衰减停止，总转角跨度 2250°（6.25 圈），
