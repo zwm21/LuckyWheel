@@ -139,8 +139,10 @@ class WheelWidget(QWidget):
         self.font_family = "汉仪文黑-65W"
         self.shadow_enabled = True
         self.cached_pixmap = None    # 离屏转盘图像（不含旋转）
-        self.cached_size = None      # 上次生成缓存时的边长 min(w, h)
+        self.cached_size = None      # 上次生成缓存时的逻辑边长 min(w, h)
+        self.cached_dpr = None       # 上次生成缓存时的 devicePixelRatio
         self.font_size = 0           # 0=自动，>0=固定像素大小
+        self._font_size_cache = {}   # (文本, 字体, 初始字号, 宽限, 高限) -> 实际字号
         self.plan = None             # 当前旋转计划（core.spin.SpinPlan）
         self.animation = None        # 驱动计划时间轴的 QVariantAnimation
         self.speed_scale = 1.0       # 动画时长除数：>1 加速（冒烟/测试用）
@@ -155,7 +157,30 @@ class WheelWidget(QWidget):
         self.font_size = size
         self.cached_pixmap = None
         self.cached_size = None
+        self.cached_dpr = None
+        self._font_size_cache.clear()
         self.update()
+
+    def _fit_font_size(self, painter, text, init_size, max_w, max_h):
+        """二分查找 [min(8, init_size), init_size] 中满足宽高约束的最大字号。
+
+        替代原逐像素递减循环。字号越小文字越小、越放得下，因此满足性是
+        单调的，可用二分。找不到满足约束的字号时返回下界，与原循环
+        在 pixelSize <= 8 时 break 的语义一致。
+        """
+        lo, hi = min(8, init_size), init_size
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            font = QFont(self.font_family)
+            font.setBold(True)
+            font.setPixelSize(mid)
+            painter.setFont(font)
+            fm = painter.fontMetrics()
+            if fm.horizontalAdvance(text) <= max_w and fm.height() <= max_h:
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo
 
     def renderCache(self):
         """将当前所有项目绘制到一个固定 pixmap 上（不包含旋转）"""
@@ -168,13 +193,19 @@ class WheelWidget(QWidget):
         wheel_diameter = side * 0.88
         radius = wheel_diameter / 2.0
         center = QPointF(side / 2.0, side / 2.0)
-    
-        # 创建正方形画布，避免圆形被拉伸
-        pixmap = QPixmap(side, side)
+
+        # 按 devicePixelRatio 放大画布，高 DPI 屏幕下不做插值放大；
+        # 之后所有绘制仍用逻辑像素坐标（painter.scale 负责换算）
+        dpr = self.devicePixelRatio()
+        if dpr <= 0:
+            dpr = 1.0
+        pixmap = QPixmap(int(round(side * dpr)), int(round(side * dpr)))
+        pixmap.setDevicePixelRatio(dpr)
         pixmap.fill(Qt.GlobalColor.transparent)
-    
+
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.scale(dpr, dpr)
     
         # ---------- 绘制扇形（无旋转） ----------
         num = len(self.items)
@@ -201,6 +232,9 @@ class WheelWidget(QWidget):
         text_radius = radius * 0.62
         num = len(self.items)
         sector_span = 360.0 / num
+        # 宽高约束与文本无关，整批文字共用
+        max_w = (radius - text_radius) * 0.9
+        max_h = text_radius * math.radians(sector_span) * 0.7
 
         for i, item in enumerate(self.items):
             # 扇区中线角度（未旋转）
@@ -210,24 +244,23 @@ class WheelWidget(QWidget):
             lx = text_radius * math.cos(mid_angle_rad)
             ly = text_radius * math.sin(mid_angle_rad)
 
-            # 动态字体大小（与原版完全相同）
+            # 动态字体大小（与原版语义相同，见 _fit_font_size）
             font = QFont(self.font_family)
             font.setBold(True)
             if self.font_size > 0:
                 init_size = self.font_size
             else:
                 init_size = max(10, int(radius * 0.18))
-            font.setPixelSize(init_size)
+            # 重复文本复用同一字号：真实数据重复率约四成，二分查找只需为
+            # 每个唯一文本做一次
+            cache_key = (item, self.font_family, init_size, max_w, max_h)
+            size = self._font_size_cache.get(cache_key)
+            if size is None:
+                size = self._fit_font_size(painter, item, init_size, max_w, max_h)
+                self._font_size_cache[cache_key] = size
+            font.setPixelSize(size)
             painter.setFont(font)
             fm = painter.fontMetrics()
-            max_w = (radius - text_radius) * 0.9
-            max_h = text_radius * math.radians(sector_span) * 0.7
-            while fm.horizontalAdvance(item) > max_w or fm.height() > max_h:
-                if font.pixelSize() <= 8:
-                    break
-                font.setPixelSize(font.pixelSize() - 1)
-                painter.setFont(font)
-                fm = painter.fontMetrics()
 
             text_w = fm.horizontalAdvance(item)
             text_h = fm.height()
@@ -254,11 +287,13 @@ class WheelWidget(QWidget):
         painter.end()
         self.cached_pixmap = pixmap
         self.cached_size = side
+        self.cached_dpr = dpr
 
     def setShadowEnabled(self, enabled):
         self.shadow_enabled = enabled
         self.cached_pixmap = None
         self.cached_size = None
+        self.cached_dpr = None
         self.update()
 
     def setFontFamily(self, family):
@@ -266,6 +301,8 @@ class WheelWidget(QWidget):
         self.font_family = family
         self.cached_pixmap = None
         self.cached_size = None
+        self.cached_dpr = None
+        self._font_size_cache.clear()   # 不同字体的度量不同，缓存不得沿用
         self.update()
 
     def setItems(self, items):
@@ -275,13 +312,20 @@ class WheelWidget(QWidget):
         self.rotation = 0.0
         self.cached_pixmap = None
         self.cached_size = None
+        self.cached_dpr = None
+        self._font_size_cache.clear()
         self.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.cached_pixmap = None
-        self.cached_size = None
-        self.update()
+        # 绘制几何只取决于 min(w, h)：未变化时缓存仍然有效，单维拉伸
+        # 不再触发重绘（拖动窗口边缘时尤为明显）
+        side = min(self.width(), self.height())
+        if self.cached_size is not None and side != self.cached_size:
+            self.cached_pixmap = None
+            self.cached_size = None
+            self.cached_dpr = None
+            self.update()
 
     def startSpin(self, initial_velocity=None):
         """开始旋转：先由 core.plan_spin 定好结果，再把动画演到终点。
@@ -348,8 +392,10 @@ class WheelWidget(QWidget):
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "请添加项目")
             return
     
-        # 需要重建缓存的情况
-        if self.cached_pixmap is None or self.cached_size != side:
+        # 需要重建缓存的情况：缓存缺失、边长变化，或窗口被移到不同
+        # devicePixelRatio 的屏幕上
+        if (self.cached_pixmap is None or self.cached_size != side
+                or self.cached_dpr != self.devicePixelRatio()):
             self.renderCache()
     
         if self.cached_pixmap is None:
