@@ -1,63 +1,112 @@
 # LuckyWheel 幸运大转盘
 
-一个基于 PyQt6 的桌面抽签程序，支持多分组管理、手动编辑项目、转盘动画和字体切换。
+一个基于 PyQt6 的桌面抽签程序：多分组管理、手动或批量导入项目、转盘动画、
+明暗主题、字体切换，所有数据自动保存到本地 JSON。
 
-## 技术栈
+抽奖采用「先等概率选中目标，再把动画演到对应位置」的方式，落点均匀性不依赖
+浮点物理模拟，也不会出现传统摩擦衰减式转盘的边缘偏差。
 
-- Python 3.8+
-- PyQt6
-- PyInstaller（用于打包）
+## 环境要求
+
+- Python 3.9 或更高版本
+- 依赖只有 PyQt6（`>=6.5,<7`）
 
 ## 运行方式
 
-### 安装依赖
-
-Python 版本要求 3.8 及以上。依赖包仅需 PyQt6，执行以下命令安装：
+安装依赖：
 
 ```
 pip install PyQt6
 ```
 
-若需自行打包 EXE，还需安装 PyInstaller：
+在项目目录下任选一种入口：
 
 ```
-pip install pyinstaller
+python main.py            # 旧入口，保留给既有快捷方式
+python -m luckywheel      # 模块入口，与上一行完全等价
 ```
 
-### 从源码运行
-
-在项目目录下打开终端，执行：
+安装为包之后还可以直接使用 `luckywheel` 命令：
 
 ```
-python main.py
+pip install .
+luckywheel
 ```
 
-### 运行打包程序
-
-已打包好的 `LuckyWheel.exe` 直接双击即可运行。打包方法：
-
-1. 确保已安装 PyInstaller，并将字体文件（如 `HYWenHei-65W.ttf`）放入项目目录（可选）。
-2. 双击 `build_exe.bat` 或执行以下命令：
+开发模式（含测试与检查工具）建议安装 editable 依赖组：
 
 ```
-pyinstaller --onefile --windowed --name="LuckyWheel" --add-data "HYWenHei-65W.ttf;." main.py
+pip install -e ".[dev]"
 ```
 
-打包成功后，可执行文件位于 `dist` 文件夹。
+## 测试与代码检查
+
+```
+pytest -q                          # 全部测试（offscreen 运行，不会弹窗）
+pytest tests/unit                  # 只跑算法层测试，零 Qt 依赖
+ruff check . && ruff format --check .
+python scripts/verify_gui.py --entry main   # GUI 冒烟：启动、抽奖、保存、关闭
+```
+
+测试目录按验证对象分层：`tests/unit` 对应 `core/` 算法，`tests/gui` 覆盖界面
+行为（主题、布局、抽取、几何恢复），`tests/statistical` 对转盘落点做卡方检验，
+`tests/characterization` 钉住重构前已确认的现状行为。`scripts/verify_gui.py` 会
+把数据隔离到 `build/verify/`，不会读写你的真实 `wheel_data.json`。
+
+## 打包 EXE
+
+双击 `build_exe.bat`，或执行：
+
+```
+python scripts/build_exe.py
+```
+
+字体是可选的。仓库不内置任何字体文件（版权归属原作者），如需内嵌，把
+`HYWenHei-65W.ttf` 之类的文件放入 `assets/fonts/`，打包脚本会自动检测并打入；
+源码运行时程序也按该目录 → 程序所在目录 → exe 解包目录的顺序查找，全部失败时
+回退为 Microsoft YaHei。不放字体不影响功能，只影响界面与转盘文字的字体。
+
+打包产物在 `dist/LuckyWheel.exe`，双击即可运行，无需 Python 环境。
+
+## 项目结构
+
+```
+main.py                      兼容 wrapper：转发到 luckywheel.ui
+src/luckywheel/
+  core/                      零 Qt 依赖的纯算法
+    models.py               条目与分组数据模型
+    storage.py              JSON 读写、版本迁移、原子写与备份
+    spin.py                 抽奖逻辑：等概率选中 + 旋转规划
+    layout.py               转盘扇区几何与字号自适应
+    paths.py                数据文件与字体的查找路径
+  ui/
+    main_window.py          主窗口与全部交互
+    wheel.py                转盘控件（渲染、动画、命中判定）
+    theme.py                明暗主题调色板与 QSS 模板
+  app.py                    入口（create_window / run / main）
+tests/                      见上文
+scripts/
+  build_exe.py              字体可选的打包脚本
+  verify_gui.py             offscreen GUI 冒烟
+```
 
 ## 功能说明
 
 - 支持手动添加、删除、编辑抽签项目，可批量导入（每行一个项目）。
 - 项目列表支持拖拽排序和随机打乱。
-- 多个分组独立管理，可重命名或删除分组，各分组数据保存在 `wheel_data.json` 中。
+- 多个分组独立管理，可重命名或删除分组。
 - 转盘动画：点击转盘中心或下方按钮开始旋转，停止后显示选中结果。
-- **（新）不放回批量抽取**：设定抽取次数 N，自动连续抽 N 次，每次抽出的项目不再放回，抽完自动停止。
+- **不放回批量抽取**：设定抽取次数 N，自动连续抽 N 次，每次抽出的项目不再放回，
+  抽完自动停止。
 - 右下角字体选择框可更换界面与转盘文字的字体。
 - 文字阴影开关可控制转盘文字是否带阴影。
-- 所有设置和项目数据会自动保存，下次启动恢复。
+- 明暗主题跟随系统或手动切换，列表高度可拖拽调整并记住。
+- 所有设置和项目数据自动保存，窗口位置与大小在下次启动时恢复（会校验是否落在
+  当前屏幕内）。
 
 ## 注意事项
 
-- 程序默认字体为"汉仪文黑-65W"，若系统中未安装此字体，将回退为"Microsoft YaHei"。如使用自备字体文件（`HYWenHei-65W.ttf`），请将其放在与 `main.py` 同级目录，并注意字体版权。
-- 打包后的 EXE 文件可能被部分杀毒软件误报，请添加信任。
-- 数据文件 `wheel_data.json` 与程序存放于同一目录，建议备份以防丢失。
+- 数据文件 `wheel_data.json` 与程序存放在同一目录，建议备份以防丢失；保存采用
+  临时文件 + 原子替换，并额外保留 `.bak`，文件损坏时不会被静默覆盖。
+- 打包后的 EXE 可能被部分杀毒软件误报，请添加信任。
+- 使用第三方字体请注意其授权条款。

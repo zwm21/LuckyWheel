@@ -19,7 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FONT_DIR = ROOT / "assets" / "fonts"
 APP_NAME = "LuckyWheel"
-# 阶段 2 后入口迁移至 src/luckywheel/app.py，此处再调整
+# 入口保持 main.py：它是转发到 luckywheel.ui 的兼容 wrapper，作为 PyInstaller
+# 入口最稳（无需处理 -m 形式的 spec）；GUI 冒烟亦以 --entry main 为基准
 ENTRY = ROOT / "main.py"
 
 

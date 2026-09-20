@@ -27,9 +27,11 @@ jobs:
       - name: Lint (ruff)
         run: ruff check . && ruff format --check .
 
-      - name: Test (offscreen, no QApplication popup)
-        # 覆盖率门禁待 core/ 抽离完成后于收尾阶段加入（见 REFACTOR_PLAN 阶段 5）
-        run: pytest -q
+      - name: Coverage (core only, gate at 70%)
+        # 门禁只覆盖 core/：ui/ 依赖 Qt 事件循环，其正确性由 tests/gui 断言，
+        # 行覆盖率数字意义有限。70% 为保守初值，如首轮 CI 实际值显著高于此，
+        # 可上调收紧。
+        run: pytest -q --cov=src/luckywheel/core --cov-report=term-missing --cov-fail-under=70
 
       - name: GUI smoke (main entry, offscreen)
         run: python scripts/verify_gui.py --entry main
