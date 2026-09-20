@@ -59,6 +59,29 @@ class TestAppState:
         assert AppState.from_dict({"ui_font_size": "九号"}).ui_font_size == 9
         assert AppState.from_dict({"wheel_font_size": -3}).wheel_font_size == 0
 
+    def test_clamp_bad_window_geometry(self):
+        """几何坏值收敛为 None，而不是带进 Qt 的 setGeometry。"""
+        assert AppState.from_dict({"window_geometry": [1, 2]}).window_geometry is None
+        assert AppState.from_dict({"window_geometry": "0,0,100,100"}).window_geometry is None
+        assert AppState.from_dict({"window_geometry": [1, 2, 3, True]}).window_geometry is None
+        good = AppState.from_dict({"window_geometry": [-8, 40, 1297, 721]})
+        assert good.window_geometry == [-8, 40, 1297, 721]
+
+    def test_clamp_bad_splitter_sizes(self):
+        assert AppState.from_dict({"splitter_sizes": [264]}).splitter_sizes is None
+        assert AppState.from_dict({"splitter_sizes": ["a", "b"]}).splitter_sizes is None
+        good = AppState.from_dict({"splitter_sizes": [264, 1011]})
+        assert good.splitter_sizes == [264, 1011]
+
+    def test_clamp_bad_heights(self):
+        assert AppState.from_dict({"list_height": -5}).list_height == 200
+        assert AppState.from_dict({"drawn_list_height": None}).drawn_list_height == 120
+
+    def test_clamp_bad_font_family(self):
+        """字体家族会直接传给 QFont()，非字符串必须收敛。"""
+        assert AppState.from_dict({"ui_font_family": 42}).ui_font_family == "Microsoft YaHei"
+        assert AppState.from_dict({"wheel_font_family": ["a"]}).wheel_font_family == "Microsoft YaHei"
+
     def test_default_state_has_one_group(self):
         state = default_state()
         assert len(state.groups) == 1

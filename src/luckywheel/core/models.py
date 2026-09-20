@@ -113,6 +113,11 @@ class AppState:
             self.current_group = 0
         if self.theme not in THEMES:
             self.theme = "light"
+        # 字体家族直接进 QFont()，非字符串会 TypeError
+        if not isinstance(self.ui_font_family, str):
+            self.ui_font_family = DEFAULT_UI_FONT
+        if not isinstance(self.wheel_font_family, str):
+            self.wheel_font_family = DEFAULT_WHEEL_FONT
         # isinstance(x, bool) 要先排除：bool 是 int 子类，True 会混过字号校验
         if not _is_int(self.ui_font_size) or self.ui_font_size < 1:
             self.ui_font_size = 9
@@ -120,10 +125,26 @@ class AppState:
             self.wheel_font_size = 0
         if not _is_int(self.batch_spin_count) or self.batch_spin_count < 1:
             self.batch_spin_count = 3
+        # 几何/高度字段直接来自外部文件：旧实现在 loadData 里手写长度检查，
+        # 收拢到此处统一收敛，避免坏值进入 Qt 的 setGeometry/setSizes
+        if not _is_int_list(self.window_geometry, 4):
+            self.window_geometry = None
+        if not _is_int_list(self.splitter_sizes, 2):
+            self.splitter_sizes = None
+        if not _is_int(self.list_height) or self.list_height < 1:
+            self.list_height = 200
+        if not _is_int(self.drawn_list_height) or self.drawn_list_height < 1:
+            self.drawn_list_height = 120
 
 
 def _is_int(value):
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_int_list(value, length):
+    return (
+        isinstance(value, (list, tuple)) and len(value) == length and all(_is_int(v) for v in value)
+    )
 
 
 def default_state():

@@ -1,6 +1,5 @@
 import secrets
 import sys
-import json
 import random
 import math
 import os
@@ -17,6 +16,9 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
                              QFileDialog, QMessageBox, QSplitter,
                              QInputDialog, QSizePolicy,
                              QAbstractItemView, QFontComboBox)
+
+from luckywheel.core import paths as core_paths, storage
+from luckywheel.core.models import AppState, Group
 
 # 转盘扇区颜色池
 SECTOR_COLORS = [
@@ -406,12 +408,12 @@ class MainWindow(QMainWindow):
         self.batch_spin_count = 3       # 批量抽取默认次数
         self.theme = "light"           # 背景主题: light / dark / system
 
-        # 数据文件路径（兼容打包后的 exe）
-        if getattr(sys, 'frozen', False):
-            app_dir = os.path.dirname(sys.executable)
-        else:
-            app_dir = os.path.dirname(os.path.abspath(__file__))
-        self.data_file = os.path.join(app_dir, "wheel_data.json")
+        # 数据文件路径：优先程序旁边（便携模式），不可写时回退用户数据目录
+        data_path, relocated = core_paths.resolve_data_path()
+        if relocated is not None:
+            print(f"提示: 数据文件将从 {relocated} 迁移到 {data_path}")
+            core_paths.relocate_data_file(relocated, data_path)
+        self.data_file = str(data_path)
 
         # 优先使用内嵌字体，失败则使用默认后备
         embedded_font = loadEmbeddedFont("HYWenHei-65W.ttf")
@@ -848,69 +850,47 @@ class MainWindow(QMainWindow):
         self.saveData()
     # ================= 数据持久化 =================
     def loadData(self):
-        try:
-            with open(self.data_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                self.groups = data.get('groups', [])
-                self.current_group_index = data.get('current_group', 0)
-                # 读取新字段，兼容旧 font_family
-                self.ui_font_family = data.get('ui_font_family', data.get('font_family', '汉仪文黑-65W'))
-                self.ui_font_size = data.get('ui_font_size', 9)
-                self.wheel_font_family = data.get('wheel_font_family', data.get('font_family', '汉仪文黑-65W'))
-                self.wheel_font_size = data.get('wheel_font_size', 0)
-                self.shadow_enabled = data.get('shadow_enabled', True)
-                self.window_geometry = data.get('window_geometry', None)
-                if self.window_geometry and len(self.window_geometry) != 4:
-                    self.window_geometry = None
-                
-                self.splitter_sizes = data.get('splitter_sizes', None)
-                if not (isinstance(self.splitter_sizes, list) and len(self.splitter_sizes) == 2):
-                    self.splitter_sizes = None
-
-                self.user_list_height = data.get('list_height', 200)
-                self.drawn_user_height = data.get('drawn_list_height', 120)
-                self.batch_spin_count = data.get('batch_spin_count', 3)
-                self.theme = data.get('theme', 'light')
-
-                for group in self.groups:
-                    if 'drawn_items' not in group:
-                        group['drawn_items'] = []
-                if not self.groups:
-                    self.groups.append({'name': '默认分组', 'items': ['选项1', '选项2', '选项3']})
-                    self.current_group_index = 0
-        except (FileNotFoundError, json.JSONDecodeError):
-            self.groups = [{'name': '默认分组', 'items': ['选项1', '选项2', '选项3'], 'drawn_items': []}]
-            self.current_group_index = 0
-            self.ui_font_family = "Microsoft YaHei"
-            self.wheel_font_family = "Microsoft YaHei"
-            self.ui_font_size = 9
-            self.wheel_font_size = 0
-            self.shadow_enabled = True
+        state, warnings = storage.load_state(self.data_file)
+        for w in warnings:
+            print("数据提示:", w)
+        self.groups = [g.to_dict() for g in state.groups]
+        self.current_group_index = state.current_group
+        # 读取新字段，兼容旧 font_family；文件未记录字体家族时，
+        # 保留 loadEmbeddedFont 已确定的选择（老数据没有这些字段）
+        self.ui_font_family = state.ui_font_family or self.ui_font_family
+        self.ui_font_size = state.ui_font_size
+        self.wheel_font_family = state.wheel_font_family or self.wheel_font_family
+        self.wheel_font_size = state.wheel_font_size
+        self.shadow_enabled = state.shadow_enabled
+        self.window_geometry = state.window_geometry
+        self.splitter_sizes = state.splitter_sizes
+        self.user_list_height = state.list_height
+        self.drawn_user_height = state.drawn_list_height
+        self.batch_spin_count = state.batch_spin_count
+        self.theme = state.theme
+        if not os.path.exists(self.data_file):
+            # 首次启动或文件损坏被隔离：把默认数据落盘（与旧行为一致）
             self.saveData()
-            self.window_geometry = None
 
     def saveData(self):
         try:
-            data = {
-                'groups': self.groups,
-                'current_group': self.current_group_index,
-                'ui_font_family': self.ui_font_family,
-                'ui_font_size': self.ui_font_size,
-                'wheel_font_family': self.wheel_font_family,
-                'wheel_font_size': self.wheel_font_size,
-                'shadow_enabled': self.shadow_enabled,
+            state = AppState(
+                groups=[Group.from_dict(g) for g in self.groups],
+                current_group=self.current_group_index,
+                ui_font_family=self.ui_font_family,
+                ui_font_size=self.ui_font_size,
+                wheel_font_family=self.wheel_font_family,
+                wheel_font_size=self.wheel_font_size,
+                shadow_enabled=self.shadow_enabled,
+                window_geometry=self.window_geometry,
+                splitter_sizes=self.splitter_sizes,
                 # 保存实际显示的高度（所见即所得）
-                'list_height': self.list_widget.height() if hasattr(self, 'list_widget') else self.user_list_height,
-                'drawn_list_height': self.drawn_list_widget.height() if hasattr(self, 'drawn_list_widget') else self.drawn_user_height,
-                'batch_spin_count': self.batch_spin_count,
-                'theme': self.theme
-            }
-            if self.window_geometry and len(self.window_geometry) == 4:
-                data['window_geometry'] = self.window_geometry
-            if self.splitter_sizes is not None:
-                data['splitter_sizes'] = self.splitter_sizes
-            with open(self.data_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+                list_height=self.list_widget.height() if hasattr(self, 'list_widget') else self.user_list_height,
+                drawn_list_height=self.drawn_list_widget.height() if hasattr(self, 'drawn_list_widget') else self.drawn_user_height,
+                batch_spin_count=self.batch_spin_count,
+                theme=self.theme,
+            )
+            storage.save_state(self.data_file, state)
         except Exception as e:
             print("保存失败:", e)
 
