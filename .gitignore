@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+*.spec
+.venv/
+venv/
+
+# 测试与工具缓存
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# 打包中间产物
+*.manifest
+
+# 字体版权归属作者，仓库永不包含；需要时放入 assets/fonts/，见该目录 README
+*.ttf
+*.otf
+
+# 运行时数据文件（用户数据，不属于版本控制）
+wheel_data.json
+wheel_data.corrupt-*.json
+wheel_data.json.bak
