@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "groups": [
+    {
+      "name": "夹具分组",
+      "items": ["A", "A", "B", "长文本条目示例"],
+      "drawn_items": ["X", "Y"]
+    }
+  ],
+  "current_group": 0,
+  "ui_font_family": "Microsoft YaHei",
+  "ui_font_size": 11,
+  "wheel_font_family": "Microsoft YaHei",
+  "wheel_font_size": 0,
+  "shadow_enabled": false,
+  "list_height": 200,
+  "drawn_list_height": 120,
+  "batch_spin_count": 3,
+  "theme": "dark",
+  "window_geometry": [10, 20, 800, 600],
+  "splitter_sizes": [250, 600]
+}

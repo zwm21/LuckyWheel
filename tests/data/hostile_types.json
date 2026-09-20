@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "groups": [
+    {
+      "name": "普通组",
+      "items": ["A", "B"]
+    },
+    "我不是分组对象",
+    {
+      "items": [42, null, true, ["嵌套"], "正常项", {"k": 1}],
+      "name": "  "
+    },
+    {
+      "name": "drawn 为 null 的组",
+      "items": ["Z"],
+      "drawn_items": null
+    },
+    {
+      "name": "items 不是列表的组",
+      "items": "AB"
+    }
+  ],
+  "current_group": 99,
+  "ui_font_size": "九号",
+  "wheel_font_size": -3,
+  "theme": "彩虹色",
+  "window_geometry": [1, 2, 3],
+  "splitter_sizes": "not-a-list"
+}

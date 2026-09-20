@@ -1,0 +1,23 @@
+{
+  "groups": [
+    {
+      "name": "旧格式分组",
+      "items": ["选项3", "选项1", "选项2", "1", "1", "1", "214"],
+      "drawn_items": ["45", "54"]
+    },
+    {
+      "name": "第二组",
+      "items": ["甲", "乙"],
+      "drawn_items": []
+    }
+  ],
+  "current_group": 1,
+  "font_family": "汉仪文黑-65W",
+  "shadow_enabled": true,
+  "window_geometry": [235, 32, 1297, 721],
+  "splitter_sizes": [264, 1011],
+  "list_height": 222,
+  "drawn_list_height": 150,
+  "batch_spin_count": 5,
+  "theme": "light"
+}
