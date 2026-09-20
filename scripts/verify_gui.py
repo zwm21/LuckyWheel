@@ -127,11 +127,10 @@ def verify(window, app):
     def single_spin():
         items = window.groups[window.current_group_index]["items"]
         window.wheel.setItems(items or ["A", "B", "C"])
-        # 冒烟加速：缩短帧长、加大衰减，数秒内跑完物理全过程
-        window.wheel.timer_interval = 1
-        window.wheel.friction = 0.80
+        # 冒烟加速：动画时长除以该系数，数秒内跑完
+        window.wheel.speed_scale = 40.0
         window.wheel.startSpin()
-        require(wait(lambda: not window.wheel.spinning, SPIN_TIMEOUT * 3, app=app), "旋转超时")
+        require(wait(lambda: not window.wheel.spinning, SPIN_TIMEOUT, app=app), "旋转超时")
         require(bool(window.result_label.text()), "结果标签为空")
 
     check("旋转到停止并显示结果", single_spin, failures)
@@ -140,8 +139,7 @@ def verify(window, app):
     print("== 批量抽取 ==")
 
     def batch_spin():
-        window.wheel.friction = 0.98
-        window.wheel.timer_interval = 30
+        window.wheel.speed_scale = 20.0
         n = min(3, len(window.groups[window.current_group_index]["items"]))
         window.batch_spinbox.setValue(max(1, n))
         before = len(window.groups[window.current_group_index]["items"])

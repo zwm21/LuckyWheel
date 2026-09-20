@@ -166,11 +166,11 @@ class TestKnownDefects:
 
 
 class TestDeadCode:
-    """ruff 可检部分之外、需要源码事实的死代码记录。"""
+    """阶段 3 已清理的死代码：QPropertyAnimation/QEasingCurve/QFontMetrics/
+    QAction/QFileDialog/secrets 六个导入及 self.font_family 均已删除，
+    本类用例确认它们不再复现。"""
 
-    def test_unused_imports(self):
-        """阶段 3 清理后本文件应删除：QPropertyAnimation, QEasingCurve,
-        QFontMetrics, QAction, QFileDialog 五个导入从未使用。"""
+    def test_no_unused_imports(self):
         src = open(legacy_main.__file__, encoding="utf-8").read()
         for name in (
             "QPropertyAnimation",
@@ -178,5 +178,12 @@ class TestDeadCode:
             "QFontMetrics",
             "QAction",
             "QFileDialog",
+            "import secrets",
         ):
-            assert src.count(name) == 1, f"{name} 应只剩导入行一处引用"
+            assert src.count(name) == 0, f"{name} 不应再出现在 main.py"
+
+    def test_mainwindow_font_family_removed(self):
+        """MainWindow.font_family 是死字段（loadEmbeddedFont 后只被调试 print 读取）。"""
+        src = open(legacy_main.__file__, encoding="utf-8").read()
+        assert 'font_family = "汉仪文黑-65W"  # 新增：当前字体家族' not in src
+        assert 'print("使用字体:", self.font_family)' not in src

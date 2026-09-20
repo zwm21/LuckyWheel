@@ -1,24 +1,24 @@
-import secrets
 import sys
 import random
 import math
 import os
 
 from PyQt6.QtCore import (Qt, QTimer, QRectF, QPointF, pyqtSignal,
-                          QPropertyAnimation, QEasingCurve, QEvent)
-from PyQt6.QtGui import (QFontMetrics, QPainter, QColor, QFont, QPen,
+                          QVariantAnimation, QEvent)
+from PyQt6.QtGui import (QPainter, QColor, QFont, QPen,
                          QBrush, QPixmap, QPolygonF, QPainterPath,
-                         QFontDatabase, QAction, QCursor, QPalette)
+                         QFontDatabase, QCursor, QPalette)
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
                              QMainWindow, QSpinBox, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QListWidget, QListWidgetItem, QComboBox,
-                             QFileDialog, QMessageBox, QSplitter,
+                             QMessageBox, QSplitter,
                              QInputDialog, QSizePolicy,
                              QAbstractItemView, QFontComboBox)
 
-from luckywheel.core import paths as core_paths, storage
+from luckywheel.core import paths as core_paths, spin, storage
 from luckywheel.core.models import AppState, Group
+from luckywheel.core.spin import sector_at
 
 # 转盘扇区颜色池
 SECTOR_COLORS = [
@@ -114,19 +114,17 @@ class WheelWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.items = []
-        self.rotation = 0.0          # 当前旋转角度（度）
-        self.angular_velocity = 0.0  # 角速度（度/秒）
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.updateRotation)
+        self.rotation = 0.0          # 当前旋转角度（度，规范化到 [0, 360)）
         self.spinning = False
-        self.friction = 0.98         # 每帧速度衰减系数
-        self.timer_interval = 30     # 毫秒
         self.result_text = ""
         self.font_family = "汉仪文黑-65W"
         self.shadow_enabled = True
         self.cached_pixmap = None    # 离屏转盘图像（不含旋转）
-        self.cached_size = None      # 上次生成缓存时的 widget 尺寸
+        self.cached_size = None      # 上次生成缓存时的边长 min(w, h)
         self.font_size = 0           # 0=自动，>0=固定像素大小
+        self.plan = None             # 当前旋转计划（core.spin.SpinPlan）
+        self.animation = None        # 驱动计划时间轴的 QVariantAnimation
+        self.speed_scale = 1.0       # 动画时长除数：>1 加速（冒烟/测试用）
 
         # 允许被窗口压缩到较小尺寸；实际绘制半径由 min(width, height) 决定，
         # 因此始终保持圆形比例不变形
@@ -250,10 +248,9 @@ class WheelWidget(QWidget):
 
     def setItems(self, items):
         """设置转盘项目"""
+        self.stopSpin()
         self.items = items
         self.rotation = 0.0
-        self.angular_velocity = 0.0
-        self.spinning = False
         self.cached_pixmap = None
         self.cached_size = None
         self.update()
@@ -265,44 +262,56 @@ class WheelWidget(QWidget):
         self.update()
 
     def startSpin(self, initial_velocity=None):
-        """开始旋转，initial_velocity 可选，非正值则自动随机"""
+        """开始旋转：先由 core.plan_spin 定好结果，再把动画演到终点。
+
+        公平性由 plan_spin 的 winner 抽取保证，与浮点物理脱钩；
+        initial_velocity 仅为兼容旧签名保留，不再影响结果。
+        """
         if self.spinning or len(self.items) == 0:
             return
-        # 确保初速度是一个正数，否则随机
-        if not isinstance(initial_velocity, (int, float)) or initial_velocity <= 0:
-            initial_velocity = 600 + secrets.randbelow(1_500_000) / 1000.0
-        self.angular_velocity = initial_velocity
+        self.plan = spin.plan_spin(len(self.items), self.rotation, random)
+        animation = QVariantAnimation(self)
+        animation.setDuration(int(self.plan.duration * 1000.0 / max(self.speed_scale, 0.01)))
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.valueChanged.connect(self._onAnimationValue)
+        animation.finished.connect(self._onAnimationFinished)
+        self.animation = animation
         self.spinning = True
-        self.timer.start(self.timer_interval)
+        animation.start()
         self.spinStarted.emit()
 
-    def updateRotation(self):
-        """定时器回调：更新角度和速度"""
-        if not self.spinning:
+    def _onAnimationValue(self, progress):
+        """动画推进：角度取自 SpinPlan 的缓动曲线，帧率无关。"""
+        if self.plan is None:
             return
-        delta = self.angular_velocity * (self.timer_interval / 1000.0)
-        self.rotation = (self.rotation + delta) % 360.0
-        self.angular_velocity *= self.friction
+        self.rotation = self.plan.rotation_at(progress * self.plan.duration)
+        self.update()
 
-        # 速度低于阈值则停止
-        if abs(self.angular_velocity) < 5.0:
-            self.angular_velocity = 0.0
+    def _onAnimationFinished(self):
+        if self.plan is None:
             self.spinning = False
-            self.timer.stop()
-            self.determineResult()
+            return
+        self.rotation = (self.plan.start_angle + self.plan.total_rotation) % 360.0
+        self.spinning = False
+        self.animation = None
+        self.update()
+        self.determineResult()
+
+    def stopSpin(self):
+        """立即停止当前旋转（不产生结果）。"""
+        if self.animation is not None:
+            self.animation.stop()
+            self.animation = None
+        self.plan = None
+        self.spinning = False
         self.update()
 
     def determineResult(self):
-        """根据最终角度计算指针所指扇区"""
+        """根据最终角度反算指针所指扇区（旧公式，逐点保持一致）。"""
         if len(self.items) == 0:
             return
-        # 指针固定在顶部（12点方向），对应圆盘坐标系角度 270°
-        pointer_angle = (270.0 - self.rotation) % 360.0
-        num = len(self.items)
-        sector_span = 360.0 / num
-        sector_index = int(pointer_angle / sector_span)
-        if sector_index >= num:
-            sector_index = num - 1
+        sector_index = sector_at(self.rotation, len(self.items))
         self.result_text = self.items[sector_index]
         self.spinFinished.emit(sector_index, self.result_text)
 
@@ -395,7 +404,6 @@ class MainWindow(QMainWindow):
         self.groups = []
         self.current_group_index = 0
         self._updating_list = False
-        self.font_family = "汉仪文黑-65W"  # 新增：当前字体家族
         self.shadow_enabled = True   # 给一个默认值，loadData 会覆盖
         self.window_geometry = None
         self.splitter_sizes = None
@@ -423,7 +431,6 @@ class MainWindow(QMainWindow):
         else:
             self.ui_font_family = "Microsoft YaHei"
             self.wheel_font_family = "Microsoft YaHei"
-        print("使用字体:", self.font_family)  # 调试用，可删除
 
         self.loadData()
 
@@ -1464,9 +1471,7 @@ class MainWindow(QMainWindow):
     def _finishBatch(self):
         """批量抽取结束，恢复界面"""
         self.batch_remaining = 0
-        self.wheel.spinning = False
-        self.wheel.angular_velocity = 0.0
-        self.wheel.timer.stop()
+        self.wheel.stopSpin()
         self.result_label.setText(f"✅ 批量抽取完成！共抽取 {len(self.batch_results)} 次")
         summary = "  →  ".join(self.batch_results[-20:])
         if len(self.batch_results) > 20:
