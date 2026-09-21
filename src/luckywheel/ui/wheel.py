@@ -1,9 +1,10 @@
 """转盘控件：离屏缓存绘制、旋转动画与结果分派。
 
-原为 main.py 内的 WheelWidget，随 UI 分层迁入本模块。SECTOR_COLORS
-（扇区调色板）与控件同文件定义：只有 renderCache 用它，搬走后
-main.py 仍经 `from luckywheel.ui.wheel import SECTOR_COLORS` 再导出，
-旧导入路径不变。
+原为 main.py 内的 WheelWidget，随 UI 分层迁入本模块。默认扇区配色池
+SECTOR_COLORS 定义在 ui.palette（它是所有实例与导入方共享的默认池），
+本模块再导出以兼容 `from luckywheel.ui.wheel import SECTOR_COLORS`；
+控件自己持有一份副本 self.sector_colors（启动时由窗口随机化后经
+setSectorColors 注入）。
 
 公平性说明：旋转由 core.spin.plan_spin 先等概率选定 winner，动画只负责
 把角度演到终点（见 startSpin）；结果经 determineResult 由最终角度反算，
@@ -21,42 +22,8 @@ from luckywheel.core import spin
 from luckywheel.core.spin import sector_at
 from luckywheel.ui import theme as ui_theme
 
-# 转盘扇区颜色池
-SECTOR_COLORS = [
-    QColor("#FF6B6B"),
-    QColor("#4ECDC4"),
-    QColor("#45B7D1"),
-    QColor("#96CEB4"),
-    QColor("#FFEAA7"),
-    QColor("#DDA0DD"),
-    QColor("#98D8C8"),
-    QColor("#F7DC6F"),
-    QColor("#BB8FCE"),
-    QColor("#85C1E9"),
-    QColor("#F8C471"),
-    QColor("#82E0AA"),
-    QColor("#F1948A"),
-    QColor("#85929E"),
-    QColor("#AED6F1"),
-    QColor("#E8DAEF"),
-    QColor("#A3E4D7"),
-    QColor("#FAD7A0"),
-    QColor("#D5F5E3"),
-    QColor("#F9E79F"),
-    QColor("#ABEBC6"),
-    # 新增颜色
-    QColor("#E74C3C"),
-    QColor("#3498DB"),
-    QColor("#2ECC71"),
-    QColor("#F39C12"),
-    QColor("#9B59B6"),
-    QColor("#1ABC9C"),
-    QColor("#E67E22"),
-    QColor("#C0392B"),
-    QColor("#16A085"),
-    QColor("#8E44AD"),
-    QColor("#D35400"),
-]
+# 再导出默认配色池，旧导入路径（luckywheel.ui.wheel / main.py）不变
+from luckywheel.ui.palette import SECTOR_COLORS  # noqa: F401
 
 
 class WheelWidget(QWidget):
@@ -78,6 +45,8 @@ class WheelWidget(QWidget):
         self.cached_dpr = None  # 上次生成缓存时的 devicePixelRatio
         self.font_size = 0  # 0=自动，>0=固定像素大小
         self._font_size_cache = {}  # (文本, 字体, 初始字号, 宽限, 高限) -> 实际字号
+        # 本实例的扇区配色：默认池的一份副本，可被 setSectorColors 整体替换
+        self.sector_colors = list(SECTOR_COLORS)
         self.plan = None  # 当前旋转计划（core.spin.SpinPlan）
         self.animation = None  # 驱动计划时间轴的 QVariantAnimation
         self.speed_scale = 1.0  # 动画时长除数：>1 加速（冒烟/测试用）
@@ -154,7 +123,7 @@ class WheelWidget(QWidget):
         for i in range(num):
             start_angle = i * sector_span
             span_angle = sector_span
-            color = SECTOR_COLORS[i % len(SECTOR_COLORS)]
+            color = self.sector_colors[i % len(self.sector_colors)]
             sector_colors.append(color)
             painter.setBrush(QBrush(color))
             painter.setPen(QPen(Qt.GlobalColor.white, 2))
@@ -225,6 +194,23 @@ class WheelWidget(QWidget):
         self.cached_pixmap = pixmap
         self.cached_size = side
         self.cached_dpr = dpr
+
+    def setSectorColors(self, colors):
+        """注入扇区配色（通常是默认池的一份随机化副本）。
+
+        随机化在调用方做、这里只接收结果：模块级 SECTOR_COLORS 是
+        所有窗口与导入方共享的默认池，原地 shuffle 会把别人的配色
+        一起改掉。空列表视为放弃注入，保留当前配色。
+
+        字号缓存不必清空：字号只由文本/字体/可用宽高决定，与底色无关。
+        """
+        if not colors:
+            return
+        self.sector_colors = list(colors)
+        self.cached_pixmap = None
+        self.cached_size = None
+        self.cached_dpr = None
+        self.update()
 
     def setShadowEnabled(self, enabled):
         self.shadow_enabled = enabled

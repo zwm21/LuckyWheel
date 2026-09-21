@@ -113,7 +113,8 @@ class MainWindow(QMainWindow):
 
         self.loadData()
 
-        random.shuffle(SECTOR_COLORS)
+        # 扇区配色启动时随机化：只取默认池（ui.palette）的副本，不动共享的 tuple
+        self._sector_colors = random.sample(SECTOR_COLORS, len(SECTOR_COLORS))
 
         self.initUI()
         self.updateWheelFromCurrentGroup()
@@ -599,6 +600,7 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setSpacing(6)
         self.wheel = WheelWidget()
+        self.wheel.setSectorColors(self._sector_colors)
         self.wheel.spinStarted.connect(self.onSpinStarted)
         self.wheel.spinFinished.connect(self.onSpinFinished)
         # 转盘吸收所有剩余高度并保持内部圆形比例（min side 决定绘制半径）

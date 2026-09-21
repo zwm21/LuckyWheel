@@ -18,7 +18,6 @@ from PyQt6.QtGui import QColor
 
 import main as legacy_main
 from luckywheel.ui import theme as ui_theme
-from luckywheel.ui import wheel as wheel_module
 from main import SECTOR_COLORS, WheelWidget
 
 
@@ -161,6 +160,9 @@ class TestKnownDefects:
         [num-1-i]"（取值来源）。两者合起来才覆盖渲染里的那一行。用记录器替换
         contrast_text_color 而不是采样像素：离屏渲染下文字依赖字体 fallback，
         墨迹位置与大小都不稳定，像素采样无法作为判据。
+
+        配色经 setSectorColors 注入（模块级 SECTOR_COLORS 已改为不可变 tuple，
+        不再被原地 shuffle）。
         """
         palette = [
             QColor("#101820"),  # 深色：若取错底色，对应文字会是黑字深底
@@ -168,7 +170,6 @@ class TestKnownDefects:
             QColor("#123456"),
             QColor("#ABCDEF"),
         ]
-        monkeypatch.setattr(wheel_module, "SECTOR_COLORS", palette)
         seen = []
         monkeypatch.setattr(
             ui_theme,
@@ -178,6 +179,7 @@ class TestKnownDefects:
 
         wheel = WheelWidget()
         qtbot.addWidget(wheel)
+        wheel.setSectorColors(palette)
         wheel.setItems(["A", "B", "C", "D"])
         wheel.resize(800, 800)
         wheel.renderCache()
@@ -217,6 +219,38 @@ class TestKnownDefects:
             assert wheel.cached_pixmap is not None
             assert not wheel.cached_pixmap.isNull()
             assert wheel.cached_size == 500  # min(700, 500)
+
+
+class TestEntryDelegation:
+    """启动序列只有 app.py 一份，main.py 只做 re-export + 转调。
+
+    缺陷记录（已修复）：app.py 的 create_window 曾写 `from main import
+    MainWindow`，只有 cwd 恰好是仓库根时才 import 得到；`python -m
+    luckywheel` 换目录或 pip 安装后运行直接 ModuleNotFoundError。
+    """
+
+    def test_main_delegates_to_app_main(self):
+        import luckywheel.app as app_module
+
+        assert legacy_main.main is app_module.main
+
+    def test_main_has_no_startup_sequence_of_its_own(self):
+        """QApplication/Fusion/show/exec 的组装不得在 main.py 重复一份。"""
+        src = open(legacy_main.__file__, encoding="utf-8").read()
+        for snippet in ("QApplication(", 'setStyle("Fusion")', "MainWindow()", "app.exec()"):
+            assert src.count(snippet) == 0, f"main.py 仍自带启动片段 {snippet!r}"
+
+    def test_app_does_not_import_root_main(self):
+        import luckywheel.app as app_module
+
+        src = open(app_module.__file__, encoding="utf-8").read()
+        assert "from main import" not in src, "app.py 不得依赖根级 main.py"
+
+    def test_app_create_window_uses_package_path(self):
+        import luckywheel.app as app_module
+
+        src = open(app_module.__file__, encoding="utf-8").read()
+        assert "from luckywheel.ui.main_window import MainWindow" in src
 
 
 class TestDeadCode:
