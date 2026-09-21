@@ -1,7 +1,8 @@
 """应用入口：`python -m luckywheel` 与安装后的 `luckywheel` 命令。
 
 启动序列（app.setStyle 必须在任何控件创建前，Fusion 是明暗调色板
-控色一致的前提）与旧 main.py 的 __main__ 段一致：
+控色一致的前提；PyQt6 默认启用高 DPI 缩放，无需手动设置）只此一份，
+根级 main.py 的 __main__ 段转调本模块的 main()，两份入口不再各写一遍：
 
     python -m luckywheel        # 等价 python main.py
     luckywheel                  # pip install 后的命令
@@ -14,11 +15,16 @@ import sys
 
 from PyQt6.QtWidgets import QApplication
 
+from luckywheel.ui.main_window import MainWindow
+
 
 def create_window():
-    """构造主窗口（MainWindow 现居根级 main.py，拆分完成后将迁入 ui/）。"""
-    from main import MainWindow
+    """构造主窗口。
 
+    这里必须走包内路径：早先本函数依赖根级 main.py 的 re-export，只有
+    cwd 恰好是仓库根时才 import 得到；`python -m luckywheel` 换个目录
+    或 pip 安装后运行直接 ModuleNotFoundError。
+    """
     return MainWindow()
 
 
