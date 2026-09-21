@@ -47,9 +47,14 @@ class TestEasedFraction:
 
 
 class TestPlanSpin:
-    @pytest.mark.parametrize("count", [1, 2, 3, 4, 8, 10, 41])
+    @pytest.mark.parametrize("count", range(1, 61))
     def test_invariant_final_angle_hits_winner(self, count):
-        """核心不变式：sector_at(start + total) == winner。"""
+        """核心不变式：sector_at(start + total) == winner（count 1..60 逐值）。
+
+        旧的抽样清单 [1, 2, 3, 4, 8, 10, 41] 漏掉了 count=7、12 等
+        span 非整数度的组合；逐值覆盖 60 个 count 实测仅约 0.03s，
+        没有理由再抽样。
+        """
         rng = random.Random(1000 + count)
         for _ in range(300):
             start = rng.random() * 360.0
