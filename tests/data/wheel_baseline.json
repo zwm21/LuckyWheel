@@ -1,0 +1,28 @@
+{
+  "items": [
+    "一等奖",
+    "二等奖",
+    "三等奖",
+    "幸运奖",
+    "谢谢参与",
+    "再来一次",
+    "安慰奖",
+    "神秘大奖"
+  ],
+  "colors": [
+    "#FF0000",
+    "#00FF00",
+    "#0000FF",
+    "#FFFF00",
+    "#FF00FF",
+    "#00FFFF",
+    "#123456",
+    "#654321"
+  ],
+  "side": 400,
+  "font_family": "汉仪文黑-65W",
+  "font_size": 0,
+  "shadow_enabled": true,
+  "text_env_fingerprint": "0ac79e98b23a9e1be5f1bdb1bf81942397d4c338a8cbd790f79a3aa453bd79e3",
+  "regenerate": "删除 tests/data/wheel_baseline.* 后运行本测试文件"
+}
