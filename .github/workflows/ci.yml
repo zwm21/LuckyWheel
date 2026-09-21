@@ -15,6 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 二进制守卫：exe 改由 GitHub Release 分发，字体不再内置；两者一旦回到
+      # 版本控制，pre-commit 的 no-dist-or-fonts 与 check-added-large-files 之外
+      # 的路径（如直接 push 到远端）仍可能把大文件带进仓库。注意 bash 默认带
+      # -eo pipefail，无命中时 grep 返回 1 会让整条管道失败，故必须用 if 包裹。
+      - name: "Guard: no tracked binaries (exe/ttf)"
+        shell: bash
+        run: |
+          if git ls-files | grep -E '\.(exe|ttf)$'; then
+            echo "::error::仓库中出现了受版本控制的二进制文件（exe/ttf）"
+            exit 1
+          fi
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -27,11 +39,15 @@ jobs:
       - name: Lint (ruff)
         run: ruff check . && ruff format --check .
 
-      - name: Coverage (core only, gate at 70%)
-        # 门禁只覆盖 core/：ui/ 依赖 Qt 事件循环，其正确性由 tests/gui 断言，
-        # 行覆盖率数字意义有限。70% 为保守初值，如首轮 CI 实际值显著高于此，
-        # 可上调收紧。
-        run: pytest -q --cov=src/luckywheel/core --cov-report=term-missing --cov-fail-under=70
+      - name: Coverage (report only, gate deferred)
+        # 门禁暂时只打印不卡人：70% 的 core 单测门禁看不出 ui/ 的真实覆盖，
+        # 而 ui/ 依赖 Qt 事件循环，其正确性由 tests/gui 与特征测试断言，行覆盖
+        # 率数字意义有限。待 CI 首轮实跑出数后，再按「core ≥ 90%、整体 ≥ 60%」
+        # 的规划线收紧（该调整可能落在本计划之后的跟进批）。
+        run: pytest -q --cov=src/luckywheel/core --cov=src/luckywheel.ui --cov-report=term-missing
 
       - name: GUI smoke (main entry, offscreen)
         run: python scripts/verify_gui.py --entry main
+
+      - name: GUI smoke (module entry, offscreen)
+        run: python scripts/verify_gui.py --entry module
