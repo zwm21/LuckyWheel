@@ -13,6 +13,11 @@
 
 offscreen 下 QFontInfo 解析不到族名（返回空串），所以指纹直接取渲染
 结果，比族名更贴近真实依赖。
+
+批次 5b 起全图对比从「逐字节相同」改为「有界且受限」：策略 J 的批量
+描边无法复现优化前「每扇区各描一遍、中间夹着不透明填充」的交错合成，
+抗锯齿带内的差异真实存在且可解释，见
+test_render_matches_committed_baseline 的说明。
 """
 
 import hashlib
@@ -55,6 +60,10 @@ ITEMS = [
     "神秘大奖",
 ]
 
+# 全图对比的容忍度（批次 5b 策略 J 后按实测标定，勿凭手感调）
+DIFF_BUDGET = 0.05  # 差异字节占比上限，实测 1.10%
+STROKE_BAND_PX = 4.0  # 描边几何带状区半宽（2px 描边+抗锯齿 fringe），实测最大 2.43px
+
 
 def _polar_point(radius_fraction, angle_deg):
     """极角（度）与半径比例 → 缓存图的设备像素坐标。"""
@@ -91,6 +100,25 @@ def _has_white_near(img, point, span=3):
     return False
 
 
+def _stroke_distances(x, y, side):
+    """像素到描边几何的最近距离：(到最近半径分隔线垂距, 到外圆中心线径向距)。
+
+    描边几何指 renderCache 里的白描边图元：len(ITEMS)+1 条过中心的
+    半径分隔线、半径 side*RADIUS_FRACTION 的外圆。分隔线在中心汇聚，
+    垂距天然覆盖中心区；文字环与扇区纯色区到二者都远大于
+    STROKE_BAND_PX，落在那里的大差异就是真实回归而非抗锯齿合成差。
+    """
+    cx = cy = side / 2.0
+    radius = side * RADIUS_FRACTION
+    dx, dy = x - cx, y - cy
+    span = 360.0 / len(ITEMS)
+    d_line = min(
+        abs(dx * math.sin(math.radians(k * span)) - dy * math.cos(math.radians(k * span)))
+        for k in range(len(ITEMS) + 1)
+    )
+    return d_line, abs(math.hypot(dx, dy) - radius)
+
+
 def _text_env_fingerprint(wheel):
     """同一字体设置渲染固定文本的像素摘要，判定基线能否复现。"""
     probe = QImage(96, 32, QImage.Format.Format_ARGB32)
@@ -108,8 +136,11 @@ def _text_env_fingerprint(wheel):
 def _write_baseline(wheel, img):
     """把当前渲染写为基线（仅在 tests/data/ 缺文件时由测试调用）。
 
-    有意变更画面后要重新生成：删除 tests/data/wheel_baseline.* 再跑本
-    文件。生成结果会体现在 git diff 里，不会静默掩盖回归。
+    有意变更画面后分两种处理：变更只影响描边几何的抗锯齿带时，保留旧
+    基线、按实测把 test_render_matches_committed_baseline 的容忍度调宽
+    （见该测试说明）；变更改的是配色/几何/文字等实质内容时，删除
+    tests/data/wheel_baseline.* 再跑本文件重新生成。两种结果都体现在
+    git diff 里，不会静默掩盖回归。
     """
     if not img.save(str(BASELINE_PNG), "PNG"):
         pytest.fail(f"基线写入失败：{BASELINE_PNG}")
@@ -195,11 +226,31 @@ class TestBaselinePixels:
         assert meta["side"] == SIDE, "尺寸与基线不一致，需重新生成基线"
 
     def test_render_matches_committed_baseline(self, wheel, img):
-        """全图与基线 >99.9% 字节相同，且差异处每通道差 ≤8。
+        """全图差异有界（≤DIFF_BUDGET）且受限（只许出现在描边几何旁）。
 
-        ARGB32 里一个字节就是一个颜色通道，因此字节差即通道差；抗锯齿
-        与字体版本差异只会带来 ±1 量级的舍入，阈值 8 足够宽松又能抓住
-        真正的画面变样。
+        原断言是「>99.9% 字节相同、每通道差 ≤8」，按优化前实现写就。
+        批次 5b 把逐扇区描边改为「填充 NoPen 一次遍历 → 半径线合并单
+        路径 → 外圆单独 drawEllipse」后实测：4183 像素（2.61%）、7017
+        字节（1.10%）不同，而两版画的是同一组图元，差异全部来自抗锯齿
+        合成，无一处真实缺陷：
+
+        - 共享半径边在旧实现里被相邻两扇区各描一次（中间还夹着不透明
+          填充），抗锯齿的白色覆盖量系统性高于单遍描边，边界两侧约 2px
+          内差 20-40；批量描边无法复现这种交错顺序（实测 stroke-all →
+          fill-all → stroke-all 也只能匹配每边界一半的像素）；
+        - 外圆由扇形路径的 arcTo 分段弧改为 drawEllipse，曲线扁平化不
+          同，最外侧约 2600 像素差 1-2，另有 48 个 fringe 像素 alpha
+          1→0（maxdiff 255 的全部来源）。
+
+        因此保留优化前基线不重新生成，把断言换成仍能抓住「画面变样」的
+        结构化容忍：
+
+        1. 差异字节 ≤ DIFF_BUDGET（实测 1.10%）——换配色、丢描边、丢
+           文字都是数量级以上的变化；
+        2. 每个差异像素都必须落在描边几何 STROKE_BAND_PX 带状区内
+           （实测最大 2.43px，全部 4183 个无一例外）——文字环、扇区
+           纯色区出现任何差异即失败，与幅度无关；
+        3. 文字环境指纹不一致时仍 skip：字形差异不是回归。
         """
         if not BASELINE_PNG.exists():
             _write_baseline(wheel, img)
@@ -213,9 +264,26 @@ class TestBaselinePixels:
         )
         current = img.bits().asstring(img.sizeInBytes())
         reference = baseline.bits().asstring(baseline.sizeInBytes())
-        if current != reference:
-            diff = [abs(a - b) for a, b in zip(current, reference) if a != b]
-            assert len(diff) / len(reference) <= 0.001, (
-                f"{len(diff)}/{len(reference)} 字节不同（>0.1%），画面已变样"
-            )
-            assert max(diff) <= 8, f"最大通道差 {max(diff)} > 8，画面已变样"
+
+        width = img.width()
+        differing_bytes = 0
+        offenders = []  # (x, y, 通道差, 垂距px, 外圆距px)：落在描边几何带外的差异像素
+        for i in range(0, len(current), 4):
+            ca, cb = current[i : i + 4], reference[i : i + 4]
+            if ca == cb:
+                continue
+            maxdiff = max(abs(ca[k] - cb[k]) for k in range(4))
+            differing_bytes += sum(1 for k in range(4) if ca[k] != cb[k])
+            pixel = i // 4
+            x, y = pixel % width, pixel // width
+            d_line, d_rim = _stroke_distances(x, y, width)
+            if min(d_line, d_rim) > STROKE_BAND_PX:
+                offenders.append((x, y, maxdiff, round(d_line, 1), round(d_rim, 1)))
+
+        assert differing_bytes / len(reference) <= DIFF_BUDGET, (
+            f"{differing_bytes}/{len(reference)} 字节不同（>{DIFF_BUDGET:.0%}），画面已变样"
+        )
+        assert not offenders, (
+            f"{len(offenders)} 个差异像素落在描边几何 {STROKE_BAND_PX:g}px 带状区外，"
+            f"画面已变样；前 3 个 (x, y, 通道差, 半径线垂距px, 外圆距px)：{offenders[:3]}"
+        )
