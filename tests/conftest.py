@@ -26,3 +26,27 @@ def real_wheel_data():
     """仓库根的运行时数据文件路径（可能不存在，属用户数据而非夹具）。"""
     root = Path(__file__).resolve().parent.parent
     return root / "wheel_data.json"
+
+
+@pytest.fixture(autouse=True)
+def no_modal_dialogs(monkeypatch, request):
+    """把延后弹出的模态框换成记录器，返回调用列表。
+
+    提示经 ui/bootstrap.notify 用 QTimer.singleShot 延后到事件循环；测试里
+    事件循环一旦被 qtbot 驱动就会真的弹出模态框并卡死用例。只有构造
+    MainWindow 的目录（gui/ 与 characterization/）需要这道防线，
+    core/ 的用例因此保持零 Qt 导入。
+
+    替换点是 show_info 的归属模块（bootstrap），与调用方无关。
+    """
+    if request.node.path.parent.name not in ("gui", "characterization"):
+        return None
+    from luckywheel.ui import bootstrap
+
+    calls = []
+    monkeypatch.setattr(
+        bootstrap,
+        "show_info",
+        lambda parent, title, text: calls.append((title, text)),
+    )
+    return calls
