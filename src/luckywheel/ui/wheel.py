@@ -14,7 +14,7 @@ setSectorColors 注入）。
 import math
 import random
 
-from PyQt6.QtCore import QPointF, QRectF, Qt, QVariantAnimation, pyqtSignal
+from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer, QVariantAnimation, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
@@ -24,6 +24,11 @@ from luckywheel.ui import theme as ui_theme
 
 # 再导出默认配色池，旧导入路径（luckywheel.ui.wheel / main.py）不变
 from luckywheel.ui.palette import SECTOR_COLORS  # noqa: F401
+
+# resize 去抖窗口：拖动窗口边缘时 resizeEvent 密集到达，每次同步重建缓存
+# 在项目多时要几十毫秒；窗口内先用旧缓存按新旧边长比拉伸兜底（画面短暂
+# 模糊，CHANGELOG「未发布」段记录该折衷）
+RESIZE_DEBOUNCE_MS = 80
 
 
 class WheelWidget(QWidget):
@@ -50,6 +55,13 @@ class WheelWidget(QWidget):
         self.plan = None  # 当前旋转计划（core.spin.SpinPlan）
         self.animation = None  # 驱动计划时间轴的 QVariantAnimation
         self.speed_scale = 1.0  # 动画时长除数：>1 加速（冒烟/测试用）
+        # resize 去抖：待生效的新边长（min(w, h)）与到点才真正失效缓存的
+        # 单次定时器。窗口内 paintEvent 拉伸旧缓存兜底，见 resizeEvent。
+        self._pending_side = None
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(RESIZE_DEBOUNCE_MS)
+        self._resize_timer.timeout.connect(self._onResizeSettled)
 
         # 允许被窗口压缩到较小尺寸；实际绘制半径由 min(width, height) 决定，
         # 因此始终保持圆形比例不变形
@@ -266,11 +278,28 @@ class WheelWidget(QWidget):
         # 绘制几何只取决于 min(w, h)：未变化时缓存仍然有效，单维拉伸
         # 不再触发重绘（拖动窗口边缘时尤为明显）
         side = min(self.width(), self.height())
-        if self.cached_size is not None and side != self.cached_size:
+        if self.cached_size is None:
+            # 还没有缓存可失效：由 paintEvent 直接按当前边长建第一个
+            return
+        if side == self.cached_size:
+            # 拖回原尺寸：缓存依然有效，取消可能挂起的去抖
+            self._pending_side = None
+            self._resize_timer.stop()
+            return
+        # 去抖：进入待生效态并（重）起单次定时器，到点才真正失效缓存；
+        # 窗口内的 paintEvent 用旧缓存按新旧边长比拉伸兜底
+        self._pending_side = side
+        self._resize_timer.start(RESIZE_DEBOUNCE_MS)
+        self.update()
+
+    def _onResizeSettled(self):
+        """去抖到点：失效缓存，由下一次 paintEvent 按新边长重建。"""
+        if self.cached_pixmap is not None:
             self.cached_pixmap = None
             self.cached_size = None
             self.cached_dpr = None
             self.update()
+        self._pending_side = None
 
     def startSpin(self, initial_velocity=None):
         """开始旋转：先由 core.plan_spin 定好结果，再把动画演到终点。
@@ -337,12 +366,12 @@ class WheelWidget(QWidget):
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "请添加项目")
             return
 
-        # 需要重建缓存的情况：缓存缺失、边长变化，或窗口被移到不同
-        # devicePixelRatio 的屏幕上
+        # 需要重建缓存的情况：缓存缺失、窗口被移到不同 devicePixelRatio 的
+        # 屏幕上，或边长已变化且不在 resize 去抖窗口内（窗口内先拉伸旧图）
         if (
             self.cached_pixmap is None
-            or self.cached_size != side
             or self.cached_dpr != self.devicePixelRatio()
+            or (self.cached_size != side and self._pending_side is None)
         ):
             self.renderCache()
 
@@ -351,14 +380,17 @@ class WheelWidget(QWidget):
 
         # 在 widget 中心贴上旋转后的缓存图
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
-        # 将缓存图中心对齐到 widget 中心
-        pixmap_center = QPointF(side / 2.0, side / 2.0)
+        # 将缓存图中心对齐到 widget 中心。去抖窗口内缓存边长与当前不一致，
+        # 按新旧边长比拉伸（圆心仍对齐；短暂模糊见 resizeEvent 的说明）
+        cache_side = side if self.cached_size is None else self.cached_size
 
         painter.save()
         painter.translate(center)
         painter.rotate(self.rotation)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.drawPixmap(-pixmap_center, self.cached_pixmap)
+        if cache_side != side:
+            painter.scale(side / cache_side, side / cache_side)
+        painter.drawPixmap(QPointF(-cache_side / 2.0, -cache_side / 2.0), self.cached_pixmap)
         painter.restore()
 
         # ---------- 绘制固定的中心装饰和指针 ----------

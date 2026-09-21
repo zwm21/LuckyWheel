@@ -3,9 +3,10 @@
 钉住的是 CHANGELOG「未发布」段两条改动的可观察行为：
 - 字号自适应：等宽/不等宽文本下二分结果与原逐像素递减逐点一致；
   重复文本只测量一次，换字体后不得沿用缓存；
-- 转盘缓存：仅 min(w, h) 变化时失效；画布按 devicePixelRatio 放大，
-  cached_size 仍记逻辑边长；dpr 变化必须重渲染；绘制内容的有效缩放
-  恰为 dpr，不得与 QPixmap 自身的 dpr 缩放叠加成 dpr^2。
+- 转盘缓存：仅 min(w, h) 变化时失效，且变化后经 80ms 去抖才真正失效
+  （窗口内 paintEvent 拉伸旧缓存兜底，画面短暂模糊）；画布按
+  devicePixelRatio 放大，cached_size 仍记逻辑边长；dpr 变化必须重渲染；
+  绘制内容的有效缩放恰为 dpr，不得与 QPixmap 自身的 dpr 缩放叠加成 dpr^2。
 
 本文件与 test_current_main_behavior.py 的分工：那份钉住单文件阶段的
 旧实现与已知缺陷，这份钉住重构改动的语义等价面。
@@ -14,10 +15,11 @@
 import math
 
 import pytest
-from PyQt6.QtCore import QRect
-from PyQt6.QtGui import QFont, QPainter, QPaintEvent, QPixmap
+from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtGui import QFont, QImage, QPainter, QPaintEvent, QPixmap, QRegion
+from PyQt6.QtWidgets import QWidget
 
-from main import WheelWidget
+from main import RESIZE_DEBOUNCE_MS, WheelWidget
 
 
 class _Measurer:
@@ -175,7 +177,34 @@ class TestFontSizeCache:
 
 
 class TestCacheGuardOnResize:
-    """resize 只在 min(w, h) 变化时失效缓存。"""
+    """resize 去抖：窗口内只标记 pending，停止 80ms 后才失效重建。
+
+    拖动窗口边缘时 resizeEvent 密集到达，每次同步重建缓存在 n=200 时要
+    几十毫秒（CHANGELOG「未发布」段记录）。去抖后：resize 标记 pending
+    并（重）起单次定时器，窗口内 paintEvent 用旧缓存按新旧边长比拉伸
+    兜底——短暂模糊是该方案的有意折衷。
+    """
+
+    @staticmethod
+    def _spy_render(monkeypatch, seen):
+        """记录每次 renderCache 实际使用的边长。"""
+        original = WheelWidget.renderCache
+
+        def spy(self):
+            seen.append(min(self.width(), self.height()))
+            return original(self)
+
+        monkeypatch.setattr(WheelWidget, "renderCache", spy)
+
+    @staticmethod
+    def _shown_wheel(qtbot, side=500, count=12):
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        wheel.setItems([f"ITEM{i:02d}" for i in range(count)])
+        wheel.resize(side, side)
+        wheel.renderCache()
+        wheel.show()
+        return wheel
 
     def test_same_min_side_keeps_cache(self, qtbot):
         wheel = WheelWidget()
@@ -189,37 +218,115 @@ class TestCacheGuardOnResize:
         wheel.resize(900, 500)  # min(w, h) 仍是 500
         assert wheel.cached_pixmap is pixmap, "min 未变时缓存应保留"
         assert wheel.cached_size == 500
+        assert wheel._pending_side is None, "min 未变不应进入去抖"
 
-    def test_changed_min_side_invalidates_cache(self, qtbot):
+    def test_changed_min_side_defers_invalidation(self, qtbot):
+        """min(w, h) 变化不再立即失效：标记 pending 并起单次定时器。"""
         wheel = WheelWidget()
         qtbot.addWidget(wheel)
         wheel.setItems(["A", "B", "C"])
         wheel.resize(700, 500)
         wheel.renderCache()
+        pixmap = wheel.cached_pixmap
 
         wheel.show()
         wheel.resize(600, 400)
-        assert wheel.cached_pixmap is None
-        assert wheel.cached_size is None
+        assert wheel.cached_pixmap is pixmap, "去抖窗口内缓存不得失效"
+        assert wheel.cached_size == 500
+        assert wheel._pending_side == 400, "应记下待生效的新边长"
+        assert wheel._resize_timer.isSingleShot()
+        assert wheel._resize_timer.isActive(), "pending 期间定时器必须在跑"
 
-    def test_paint_event_rerenders_after_invalidate(self, qtbot):
-        """resize 失效后由 paintEvent 懒重建，几何未变则不重建。"""
-        wheel = WheelWidget()
-        qtbot.addWidget(wheel)
-        wheel.setItems(["A", "B", "C"])
-        wheel.resize(400, 300)
-        wheel.renderCache()
-        first = wheel.cached_pixmap
+    def test_repeated_resizes_do_not_rebuild(self, qtbot, monkeypatch):
+        """窗口内连续 resize 不触发 renderCache，定时器被不断重启。"""
+        wheel = self._shown_wheel(qtbot)
+        rendered = []
+        self._spy_render(monkeypatch, rendered)
 
-        wheel.show()
-        wheel.resize(300, 200)  # resizeEvent 已失效缓存
-        wheel.paintEvent(QPaintEvent(QRect(0, 0, 300, 200)))
-        assert wheel.cached_pixmap is not first
-        assert wheel.cached_size == 200
+        for side in (480, 460, 440, 420, 400):
+            wheel.resize(side, side)
+            assert rendered == [], f"resize 到 {side} 不应重建缓存"
+            assert wheel._resize_timer.isActive(), "每次 resize 都应重启定时器"
+        assert wheel._pending_side == 400, "pending 应跟踪最后一次 resize"
 
-        current = wheel.cached_pixmap
-        wheel.paintEvent(QPaintEvent(QRect(0, 0, 300, 200)))
-        assert wheel.cached_pixmap is current, "几何未变时 paintEvent 不得重建缓存"
+    def test_rebuilds_once_after_debounce_elapses(self, qtbot, monkeypatch):
+        """停止 80ms 后恰好重建一次，且按最新边长重建。"""
+        wheel = self._shown_wheel(qtbot)
+        rendered = []
+        self._spy_render(monkeypatch, rendered)
+
+        for side in (480, 460, 440, 420, 400):
+            wheel.resize(side, side)
+        qtbot.wait(RESIZE_DEBOUNCE_MS + 60)
+
+        assert rendered == [400], "去抖到点应恰好重建一次，且使用最新边长"
+        assert wheel.cached_size == 400
+        assert wheel._pending_side is None, "生效后应清除 pending"
+        assert not wheel._resize_timer.isActive()
+
+    def test_paint_stretches_old_cache_during_debounce(self, qtbot, monkeypatch):
+        """去抖窗口内 paintEvent 拉伸旧缓存兜底，不触发重建。
+
+        旧 500 边长缓存按 400/500 拉伸后半径恰为 400*0.44，与新边长直接
+        渲染同几何，故同时钉住「画满新尺寸」与「未触边」：若窗口内按原
+        尺寸绘制旧图，半径 500*0.44=220 会超出 400 画布的一半而被裁切。
+
+        wheel.grab() 会用 widget 背景色填满整幅画布，角点全不透明，无法
+        用 alpha 分辨轮盘边界；改用 wheel.render() 画到自建透明 QImage 上
+        测量。指针固定在圆心正上方，量竖向跨度时取偏离圆心的一列，按弦长
+        公式换算期望值，避免把指针尖端当成轮盘边缘。
+        """
+        wheel = self._shown_wheel(qtbot, side=500)
+        rendered = []
+        self._spy_render(monkeypatch, rendered)
+
+        wheel.resize(400, 400)
+        img = _render_to_transparent(wheel)
+        assert rendered == [], "去抖窗口内不得重建缓存"
+
+        side = 400
+        radius = side * 0.88 / 2.0
+        center = side / 2.0
+        row = _opaque_extent(img, y=int(center))
+        offset = int(radius / 3)
+        col = _opaque_extent(img, x=int(center) + offset)
+        assert row is not None and col is not None, "拉伸后转盘应仍在绘制"
+
+        # 偏离圆心 offset 处，轮盘在该列的竖向半弦长
+        half_chord = math.sqrt(radius**2 - offset**2)
+        for label, (lo, hi), expected in (
+            ("横向（过圆心行）", row, 2.0 * radius),
+            (f"竖向（圆心右 {offset} 列）", col, 2.0 * half_chord),
+        ):
+            assert abs((lo + hi) / 2.0 - center) <= 3.0, f"{label} 圆心偏移：{(lo, hi)}"
+            # 容差覆盖 2px 白色描边向外扩出的约 1 逻辑像素与抗锯齿
+            assert abs((hi - lo) - expected) <= 6.0, (
+                f"{label} 跨度 {hi - lo} != {expected:.0f}（旧图未拉伸到新尺寸）"
+            )
+            assert 0 < lo and hi < side - 1, f"{label} 触达画布边缘（内容被裁切）：{(lo, hi)}"
+
+
+def _render_to_transparent(widget, side=None):
+    """把 widget 画到透明 QImage 上并返回（grab() 会填背景色，角点全不透明）。"""
+    if side is None:
+        side = min(widget.width(), widget.height())
+    img = QImage(side, side, QImage.Format.Format_ARGB32)
+    img.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(img)
+    widget.render(painter, QPoint(0, 0), QRegion(), QWidget.RenderFlag.DrawChildren)
+    painter.end()
+    return img
+
+
+def _opaque_extent(img, x=None, y=None):
+    """沿 y 行或 x 列量不透明像素的起止坐标；该行/列全透明时返回 None。"""
+    count = img.height() if y is None else img.width()
+    hits = []
+    for i in range(count):
+        px, py = (i, y) if y is not None else (x, i)
+        if (img.pixel(px, py) >> 24) & 0xFF > 200:
+            hits.append(i)
+    return (hits[0], hits[-1]) if hits else None
 
 
 def _opaque_bbox(img):
