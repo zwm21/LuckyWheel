@@ -145,12 +145,21 @@ class ItemsPanel(Panel):
             self.save()
 
     def onItemsReordered(self):
-        """拖拽排序后同步数据"""
+        """拖拽排序后同步数据。
+
+        顺序一变，上一轮的中奖结果就失效了：last_result_index 是扇区下标，
+        排序后同一扇区下已经换成别的项目——留着它，结果标签仍显示旧中奖项，
+        而「抽出」会按旧下标 pop 掉另一个项目。与
+        MainWindow.updateWheelFromCurrentGroup 的处理保持一致（那条路径本来
+        就清，只是拖拽排序不走它）。
+        """
         if self.window.updating_list:
             return
         items = [self.list_widget.item(i).text() for i in range(self.list_widget.count())]
         if items != self.group["items"]:
             self.group["items"] = items
             self.window.wheel.setItems(items)
+            self.window.last_result_index = None
+            self.window.result_label.setText("")
             self.save()
             self.refresh_extract_state()

@@ -16,7 +16,7 @@ import math
 
 import pytest
 from PyQt6.QtCore import QPoint, QRect, Qt
-from PyQt6.QtGui import QFont, QImage, QPainter, QPaintEvent, QPixmap, QRegion
+from PyQt6.QtGui import QFont, QFontMetrics, QImage, QPainter, QPaintEvent, QPixmap, QRegion
 from PyQt6.QtWidgets import QWidget
 
 from luckywheel.core import layout
@@ -300,8 +300,32 @@ class TestMeasurementPathsAgree:
                         assert via_metrics(text, px) == expected, (
                             f"dpr={dpr} family={family} px={px} text={text!r}"
                         )
+                        # renderCache 现在直接量它刚建好的 font，不再回调
+                        # measure()——省掉每条目每次渲染的一次 QFont 构造。
+                        # 这条断言钉住"省掉的只是构造，不是语义"。
+                        direct = QFontMetrics(font)
+                        assert (direct.horizontalAdvance(text), direct.height()) == expected
         finally:
             painter.end()
+
+    def test_render_uses_the_font_it_solved_for(self, qtbot):
+        """renderCache 的绘制矩形必须按求解出的字号量，两者不得脱钩。"""
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        wheel.setFontFamily("Microsoft YaHei")
+        wheel.setItems(["壹", "贰", "叁"])
+        wheel.resize(600, 600)
+        wheel.renderCache()
+
+        init_size, max_w, max_h = _constraints(wheel)
+        measure = wheel._measure()
+        for item in wheel.items:
+            size = fit_size(wheel, item, init_size, max_w, max_h)
+            font = QFont(wheel.font_family)
+            font.setBold(True)
+            font.setPixelSize(size)
+            fm = QFontMetrics(font)
+            assert (fm.horizontalAdvance(item), fm.height()) == measure(item, size)
 
 
 class TestCacheGuardOnResize:
@@ -376,6 +400,48 @@ class TestCacheGuardOnResize:
             assert rendered == [], f"resize 到 {side} 不应重建缓存"
             assert wheel._resize_timer.isActive(), "每次 resize 都应重启定时器"
         assert wheel._pending_side == 400, "pending 应跟踪最后一次 resize"
+
+    def test_settled_skips_rebuild_when_side_already_matches(self, qtbot, monkeypatch):
+        """去抖到点前已按最终边长重建过，定时器到点不得再建一遍。
+
+        去抖窗口内 paintEvent 的另一条重建触发条件是 dpr 变化，它按当前
+        （即最终）边长重建；定时器只看 cached_pixmap is not None 就强制
+        失效，于是同一份图建两次，大批条目下白搭几十毫秒。
+        """
+        wheel = self._shown_wheel(qtbot, side=500)
+        monkeypatch.setattr(wheel, "devicePixelRatio", lambda: 1.0)
+        wheel.resize(400, 400)
+        assert wheel._pending_side == 400
+
+        rendered = []
+        self._spy_render(monkeypatch, rendered)
+        # 去抖窗口内 dpr 变化：paintEvent 按当前边长 400 全量重建
+        monkeypatch.setattr(wheel, "devicePixelRatio", lambda: 2.0)
+        wheel.paintEvent(QPaintEvent(QRect(0, 0, 400, 400)))
+        assert rendered == [400] and wheel.cached_size == 400
+
+        qtbot.wait(RESIZE_DEBOUNCE_MS + 60)
+        assert rendered == [400], "边长已一致，到点不该再重建"
+        assert wheel.cached_pixmap is not None, "缓存不该被无谓清掉"
+        assert wheel._pending_side is None
+
+    def test_invalidate_clears_pending_and_stops_timer(self, qtbot):
+        """任一 setter 失效缓存时，去抖状态必须一并收掉。
+
+        _pending_side 留着会让 paintEvent 继续走拉伸分支，而 resizeEvent 在
+        cached_size is None 时早退、不会替它清掉——于是旧的待生效边长能活过
+        后续的 resize。
+        """
+        wheel = self._shown_wheel(qtbot, side=500)
+        wheel.resize(400, 400)
+        assert wheel._pending_side == 400 and wheel._resize_timer.isActive()
+
+        wheel.setShadowEnabled(not wheel.shadow_enabled)
+        assert wheel._pending_side is None
+        assert not wheel._resize_timer.isActive()
+
+        wheel.resize(300, 300)
+        assert wheel._pending_side is None, "无缓存可失效时不该进入去抖态"
 
     def test_rebuilds_once_after_debounce_elapses(self, qtbot, monkeypatch):
         """停止 80ms 后恰好重建一次，且按最新边长重建。"""
@@ -544,3 +610,35 @@ class TestHighDpiCanvas:
         wheel.paintEvent(QPaintEvent(QRect(0, 0, 400, 400)))
         assert wheel.cached_pixmap is not first, "dpr 变化后 paintEvent 必须重渲染"
         assert wheel.cached_dpr == 2.0
+
+    def test_nonpositive_dpr_does_not_rebuild_every_paint(self, qtbot, monkeypatch):
+        """dpr 钳位必须两侧共用。
+
+        renderCache 把 <= 0 钳到 1.0 后存进 cached_dpr，paintEvent 早先拿
+        未钳位的原值比较，于是 dpr 取到 0 时每次 paintEvent 都判定"dpr 变了"
+        并全量重建——旋转中就是每帧重建。
+        """
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        wheel.setItems(["A", "B", "C"])
+        wheel.resize(400, 400)
+        monkeypatch.setattr(wheel, "devicePixelRatio", lambda: 0.0)
+
+        rebuilds = []
+        TestCacheGuardOnResize._spy_render(monkeypatch, rebuilds)
+        for _ in range(4):
+            wheel.paintEvent(QPaintEvent(QRect(0, 0, 400, 400)))
+        assert rebuilds == [400], "只应建第一份缓存，其后每帧复用"
+
+
+class TestDegenerateSide:
+    def test_empty_items_clears_all_guard_fields(self, qtbot):
+        """空条目早退必须与其他五处失效点一致地清掉三项守卫字段。"""
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        wheel.setItems(["A", "B"])
+        wheel.resize(400, 400)
+        wheel.renderCache()
+        wheel.items = []
+        wheel.renderCache()
+        assert (wheel.cached_pixmap, wheel.cached_size, wheel.cached_dpr) == (None, None, None)

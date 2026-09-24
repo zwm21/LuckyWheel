@@ -84,10 +84,27 @@ class WheelWidget(QWidget):
         五个 setter（字号/配色/阴影/字体/条目）与 resize 去抖到点共六处
         调用都走这里。三项必须一起清：paintEvent 的 guard 同时比对 pixmap、
         逻辑边长与 dpr，只清其中一两项会让旧图被判为"仍然匹配"而继续使用。
+
+        去抖状态也要一起收掉：缓存已经没了，"等 80ms 后再失效"就无事可做，
+        而留着的 _pending_side 会让 paintEvent 继续按拉伸分支走；
+        resizeEvent 在 cached_size is None 时早退，也不会替它清掉。
         """
         self.cached_pixmap = None
         self.cached_size = None
         self.cached_dpr = None
+        self._pending_side = None
+        self._resize_timer.stop()
+
+    def _device_pixel_ratio(self):
+        """钳位后的 devicePixelRatio；renderCache 与 paintEvent 必须共用。
+
+        renderCache 把 <= 0 钳到 1.0 后存进 cached_dpr，而 paintEvent 早先
+        拿未钳位的原值比较：一旦真取到 0，每次 paintEvent 都判定"dpr 变了"
+        而全量重建——旋转中就是每帧重建。真实 Qt 下取不到 0，但两侧各自
+        钳位本身就是个会发散的写法。
+        """
+        dpr = self.devicePixelRatio()
+        return dpr if dpr > 0 else 1.0
 
     def setFontSize(self, size):
         """设置转盘文字固定大小，0 为自动"""
@@ -126,8 +143,9 @@ class WheelWidget(QWidget):
     def renderCache(self):
         """将当前所有项目绘制到一个固定 pixmap 上（不包含旋转）"""
         if not self.items:
-            self.cached_pixmap = None
-            self.cached_size = None
+            # 走 _invalidate_cache 而非只清 pixmap 与 size：cached_dpr 留着
+            # 会让下一次 paintEvent 的守卫少比一项，与其他五处失效点不一致
+            self._invalidate_cache()
             return
 
         side = min(self.width(), self.height())
@@ -139,9 +157,7 @@ class WheelWidget(QWidget):
         # 会自动按 dpr 缩放（图元与文字均以设备分辨率渲染），因此此处
         # 绝不能再手动 painter.scale(dpr, dpr)——那会叠加成 dpr² 缩放，
         # 整个转盘被放大并移出画布（dpr=1 时 1²=1 无差别，故难以察觉）。
-        dpr = self.devicePixelRatio()
-        if dpr <= 0:
-            dpr = 1.0
+        dpr = self._device_pixel_ratio()
         pixmap = QPixmap(int(round(side * dpr)), int(round(side * dpr)))
         pixmap.setDevicePixelRatio(dpr)
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -227,10 +243,13 @@ class WheelWidget(QWidget):
             )
             font.setPixelSize(size)
             painter.setFont(font)
-            # 文字尺寸与字号求解走同一条测量路径（measure 内部用独立
-            # QFontMetrics）：若这里改回 painter.fontMetrics()，两条路径
-            # 一旦不一致就会出现"求解认为放得下、绘制时却超出"的偏差
-            text_w, text_h = measure(item, size)
+            # 直接量刚建好的 font，不再走 measure()——measure 内部会按
+            # (family, bold, px) 重新造一份一模一样的 QFont，那是每个条目每次
+            # 渲染都做一遍的无谓构造（含 fit() 零求解的热缓存渲染）。两者
+            # 构造参数逐字相同，故求解与绘制仍在同一条测量路径上：改回
+            # painter.fontMetrics() 才会引入"求解认为放得下、绘制时却超出"。
+            fm = QFontMetrics(font)
+            text_w, text_h = fm.horizontalAdvance(item), fm.height()
 
             # 文字在 pixmap 中的位置（center 是 pixmap 中心，与 widget 中心相同计算方式）
             painter.save()
@@ -322,8 +341,13 @@ class WheelWidget(QWidget):
         self.update()
 
     def _onResizeSettled(self):
-        """去抖到点：失效缓存，由下一次 paintEvent 按新边长重建。"""
-        if self.cached_pixmap is not None:
+        """去抖到点：失效缓存，由下一次 paintEvent 按新边长重建。
+
+        边长已经等于缓存边长就什么都不做：去抖窗口内 paintEvent 可能因为
+        dpr 变化而全量重建过一次（那次用的就是当前边长），定时器到点再强制
+        重建一遍纯属白干——大批条目下一次重建就是几十毫秒。
+        """
+        if self.cached_pixmap is not None and self.cached_size != min(self.width(), self.height()):
             self._invalidate_cache()
             self.update()
         self._pending_side = None
@@ -396,7 +420,7 @@ class WheelWidget(QWidget):
         # 屏幕上，或边长已变化且不在 resize 去抖窗口内（窗口内先拉伸旧图）
         if (
             self.cached_pixmap is None
-            or self.cached_dpr != self.devicePixelRatio()
+            or self.cached_dpr != self._device_pixel_ratio()
             or (self.cached_size != side and self._pending_side is None)
         ):
             self.renderCache()
@@ -407,8 +431,11 @@ class WheelWidget(QWidget):
         # 在 widget 中心贴上旋转后的缓存图
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
         # 将缓存图中心对齐到 widget 中心。去抖窗口内缓存边长与当前不一致，
-        # 按新旧边长比拉伸（圆心仍对齐；短暂模糊见 resizeEvent 的说明）
-        cache_side = side if self.cached_size is None else self.cached_size
+        # 按新旧边长比拉伸（圆心仍对齐；短暂模糊见 resizeEvent 的说明）。
+        # cached_pixmap 非 None 即 cached_size 非 None：两者在 renderCache
+        # 末尾同设、在 _invalidate_cache 同清，早先那句
+        # `side if self.cached_size is None else ...` 是取不到的分支。
+        cache_side = self.cached_size
 
         painter.save()
         painter.translate(center)

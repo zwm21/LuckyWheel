@@ -187,12 +187,21 @@ class SpinPanel(Panel):
                 self._finishBatch()
                 return
 
-            # 继续下一轮旋转
-            QTimer.singleShot(400, self.window.wheel.startSpin)
+            # 继续下一轮旋转。必须经 _continueBatch 而不直连 wheel.startSpin：
+            # QTimer.singleShot 不可取消，这 400ms 里按「停止」只把
+            # batch_remaining 归零并宣布"批量抽取完成"，到点的 startSpin
+            # 照样转一轮、照样宣布中奖并写上 last_result_index。
+            QTimer.singleShot(400, self._continueBatch)
             return
 
         # 单次抽取模式：恢复正常状态
         self._restoreSingleIdle()
+
+    def _continueBatch(self):
+        """轮间停顿到点：批量仍在进行才续转。"""
+        if self.batch_remaining <= 0:
+            return
+        self.window.wheel.startSpin()
 
     def stopSingleSpin(self):
         """手动停止单次旋转：转盘停在当前角度，不产生中奖结果。
