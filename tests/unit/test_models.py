@@ -2,7 +2,88 @@
 
 import pytest
 
-from luckywheel.core.models import SCHEMA_VERSION, AppState, Group, default_state
+from luckywheel.core import storage
+from luckywheel.core.models import (
+    MAX_BATCH_SPIN_COUNT,
+    MAX_COORD,
+    MAX_FONT_SIZE,
+    MAX_LIST_HEIGHT,
+    SCHEMA_VERSION,
+    AppState,
+    Group,
+    default_state,
+)
+
+BASE = {"version": SCHEMA_VERSION, "groups": [{"name": "g", "items": ["a", "b"]}]}
+
+
+def clamp_with(**overrides):
+    """走生产路径 storage.parse_state，返回收敛后的 AppState。"""
+    data = dict(BASE, **overrides)
+    state, _ = storage.parse_state(data)
+    return state
+
+
+class TestNumericUpperBounds:
+    """外部数据的数值必须同时收上下界。
+
+    上界缺失时，超大整数会通过校验并直接进 QFont/QRect/setSizes——C++ 侧
+    是 int，边界检查处抛 OverflowError，而它发生在 MainWindow.__init__ 里，
+    表现为程序根本无法启动（实测 ui_font_size=1e12 与
+    window_geometry=[1e20,...] 各复现一次）。
+    """
+
+    def test_huge_font_size_clamped(self):
+        assert clamp_with(ui_font_size=10**12).ui_font_size == 9
+        assert clamp_with(wheel_font_size=10**12).wheel_font_size == 0
+        # 边界值本身合法
+        assert clamp_with(ui_font_size=MAX_FONT_SIZE).ui_font_size == MAX_FONT_SIZE
+        assert clamp_with(wheel_font_size=MAX_FONT_SIZE).wheel_font_size == MAX_FONT_SIZE
+
+    def test_huge_geometry_clamped_to_none(self):
+        """几何越界收敛为 None（等于"本次不恢复"），而非带进 QRect。"""
+        assert clamp_with(window_geometry=[10**20, 0, 800, 600]).window_geometry is None
+        assert clamp_with(window_geometry=[0, 0, 10**20, 600]).window_geometry is None
+        assert clamp_with(splitter_sizes=[10**20, 600]).splitter_sizes is None
+        # 负坐标合法（多屏布局），负尺寸不合法
+        assert clamp_with(window_geometry=[-MAX_COORD, -MAX_COORD, 800, 600]).window_geometry == [
+            -MAX_COORD,
+            -MAX_COORD,
+            800,
+            600,
+        ]
+        assert clamp_with(window_geometry=[0, 0, -800, 600]).window_geometry is None
+
+    def test_huge_heights_and_batch_count_clamped(self):
+        assert clamp_with(list_height=10**12).list_height == 200
+        assert clamp_with(drawn_list_height=10**12).drawn_list_height == 120
+        assert clamp_with(batch_spin_count=10**12).batch_spin_count == 3
+        assert clamp_with(batch_spin_count=MAX_BATCH_SPIN_COUNT).batch_spin_count == (
+            MAX_BATCH_SPIN_COUNT
+        )
+        assert clamp_with(list_height=MAX_LIST_HEIGHT).list_height == MAX_LIST_HEIGHT
+
+    def test_clamped_values_are_qt_safe(self):
+        """收敛后的每个整数字段都必须落在 C int 的安全范围内。"""
+        state = clamp_with(
+            ui_font_size=10**12,
+            wheel_font_size=10**12,
+            window_geometry=[10**20, 0, 800, 600],
+            splitter_sizes=[10**20, 600],
+            list_height=10**12,
+            drawn_list_height=10**12,
+            batch_spin_count=10**12,
+        )
+        numbers = [
+            state.ui_font_size,
+            state.wheel_font_size,
+            state.list_height,
+            state.drawn_list_height,
+            state.batch_spin_count,
+        ]
+        numbers += list(state.window_geometry or [])
+        numbers += list(state.splitter_sizes or [])
+        assert all(-(2**31) <= n <= 2**31 - 1 for n in numbers)
 
 
 class TestGroup:

@@ -9,6 +9,16 @@ DEFAULT_WHEEL_FONT = "Microsoft YaHei"
 DEFAULT_GROUP_NAME = "默认分组"
 THEMES = ("light", "dark", "system")
 
+# 数值上界。这些字段全部来自外部数据文件，随后直接进 QFont/QRect/
+# setSizes——C++ 侧是 int，超范围的 Python 大整数会在边界检查处抛
+# OverflowError，而它发生在 MainWindow.__init__ 里，表现为程序起不来。
+# 32767 是 Win32 短整型上界，也是 QWidget 尺寸的实际可用上限。
+MAX_FONT_SIZE = 200
+MAX_LIST_HEIGHT = 20000
+MAX_BATCH_SPIN_COUNT = 1000
+MAX_COORD = 32767
+MIN_COORD = -32768
+
 
 @dataclass
 class Group:
@@ -109,11 +119,16 @@ class AppState:
         return state
 
     def clamp(self):
-        """把引用外部数据后的取值收敛到合法范围。"""
+        """把引用外部数据后的取值收敛到合法范围。
+
+        上下界都要收：下界防 0/负数让控件退化，上界防超大整数进 Qt 的
+        int 参数时抛 OverflowError（该异常发生在 MainWindow.__init__，
+        用户看到的是程序根本无法启动）。
+        """
         if not self.groups:
             self.groups = [Group()]
             self.current_group = 0
-        if not 0 <= self.current_group < len(self.groups):
+        if not _is_int(self.current_group) or not 0 <= self.current_group < len(self.groups):
             self.current_group = 0
         if self.theme not in THEMES:
             self.theme = "light"
@@ -126,22 +141,45 @@ class AppState:
         if self.wheel_font_family is not None and not isinstance(self.wheel_font_family, str):
             self.wheel_font_family = DEFAULT_WHEEL_FONT
         # isinstance(x, bool) 要先排除：bool 是 int 子类，True 会混过字号校验
-        if not _is_int(self.ui_font_size) or self.ui_font_size < 1:
+        if not _is_int(self.ui_font_size) or not 1 <= self.ui_font_size <= MAX_FONT_SIZE:
             self.ui_font_size = 9
-        if not _is_int(self.wheel_font_size) or self.wheel_font_size < 0:
+        if not _is_int(self.wheel_font_size) or not 0 <= self.wheel_font_size <= MAX_FONT_SIZE:
             self.wheel_font_size = 0
-        if not _is_int(self.batch_spin_count) or self.batch_spin_count < 1:
+        if not _is_int(self.batch_spin_count) or not 1 <= self.batch_spin_count <= (
+            MAX_BATCH_SPIN_COUNT
+        ):
             self.batch_spin_count = 3
         # 几何/高度字段直接来自外部文件：旧实现在 loadData 里手写长度检查，
         # 收拢到此处统一收敛，避免坏值进入 Qt 的 setGeometry/setSizes
         if not _is_int_list(self.window_geometry, 4):
             self.window_geometry = None
+        elif not self._geometry_in_range(self.window_geometry):
+            self.window_geometry = None
         if not _is_int_list(self.splitter_sizes, 2):
             self.splitter_sizes = None
-        if not _is_int(self.list_height) or self.list_height < 1:
+        elif not self._geometry_in_range(self.splitter_sizes):
+            self.splitter_sizes = None
+        if not _is_int(self.list_height) or not 1 <= self.list_height <= MAX_LIST_HEIGHT:
             self.list_height = 200
-        if not _is_int(self.drawn_list_height) or self.drawn_list_height < 1:
+        if not _is_int(self.drawn_list_height) or not 1 <= self.drawn_list_height <= (
+            MAX_LIST_HEIGHT
+        ):
             self.drawn_list_height = 120
+
+    @staticmethod
+    def _geometry_in_range(values):
+        """几何数值范围检查：坐标可负（多屏布局），尺寸必须为正。"""
+        if len(values) == 4:
+            # window_geometry: [x, y, w, h]
+            x, y, w, h = values
+            return (
+                MIN_COORD <= x <= MAX_COORD
+                and MIN_COORD <= y <= MAX_COORD
+                and 1 <= w <= MAX_COORD
+                and 1 <= h <= MAX_COORD
+            )
+        # splitter_sizes: [left, right]
+        return all(1 <= v <= MAX_COORD for v in values)
 
 
 def _is_int(value):

@@ -37,6 +37,9 @@ from luckywheel.ui.wheel import SECTOR_COLORS, WheelWidget  # noqa: F401  (兼�
 # 落盘；关闭窗口等不能丢数据的时机走 flushSave 立即写入
 SAVE_DEBOUNCE_MS = 500
 
+# 载入告警汇总时预览的条数（见 _notifyWarnings）
+PREVIEW_WARNING_COUNT = 5
+
 
 class MainWindow(QMainWindow):
     """主窗口：编辑面板 + 转盘"""
@@ -147,10 +150,26 @@ class MainWindow(QMainWindow):
         self.settings_panel.applyWheelFont()
 
     # ================= 数据持久化 =================
+    def _notifyWarnings(self, warnings):
+        """把载入告警合并为一次提示。
+
+        逐条弹窗会在坏数据下淹没界面：2 万条非法条目会产生 2 万条 warning，
+        每条一次 notify 就是 2 万个非模态框排队弹出。改为一条汇总，只预览
+        前几条并说明总量。
+        """
+        if not warnings:
+            return
+        if len(warnings) == 1:
+            notify(self, warnings[0], title="数据提示")
+            return
+        preview = "\n".join(warnings[:PREVIEW_WARNING_COUNT])
+        rest = len(warnings) - PREVIEW_WARNING_COUNT
+        suffix = f"\n……另有 {rest} 条同类提示" if rest > 0 else ""
+        notify(self, preview + suffix, title=f"数据提示（共 {len(warnings)} 条）")
+
     def loadData(self):
         state, warnings = storage.load_state(self.data_file)
-        for w in warnings:
-            notify(self, w, title="数据提示")
+        self._notifyWarnings(warnings)
         self.groups = [g.to_dict() for g in state.groups]
         self.current_group_index = state.current_group
         # 读取新字段，兼容旧 font_family；文件未记录字体家族时，
