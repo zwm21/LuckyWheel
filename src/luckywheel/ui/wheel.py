@@ -18,7 +18,7 @@ from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer, QVariantAnimation, pyqtSig
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
-from luckywheel.core import spin
+from luckywheel.core import layout, spin
 from luckywheel.core.spin import sector_at
 from luckywheel.ui import theme as ui_theme
 
@@ -49,7 +49,7 @@ class WheelWidget(QWidget):
         self.cached_size = None  # 上次生成缓存时的逻辑边长 min(w, h)
         self.cached_dpr = None  # 上次生成缓存时的 devicePixelRatio
         self.font_size = 0  # 0=自动，>0=固定像素大小
-        self._font_size_cache = {}  # (文本, 字体, 初始字号, 宽限, 高限) -> 实际字号
+        self._font_size_cache = layout.FontSizeCache()
         # 本实例的扇区配色：默认池的一份副本，可被 setSectorColors 整体替换
         self.sector_colors = list(SECTOR_COLORS)
         self.plan = None  # 当前旋转计划（core.spin.SpinPlan）
@@ -77,26 +77,30 @@ class WheelWidget(QWidget):
         self._font_size_cache.clear()
         self.update()
 
-    def _fit_font_size(self, painter, text, init_size, max_w, max_h):
-        """二分查找 [min(8, init_size), init_size] 中满足宽高约束的最大字号。
+    def _measure(self, painter):
+        """返回 (text, px) -> (宽, 高) 的测量闭包，绑定当前字体家族。
 
-        替代原逐像素递减循环。字号越小文字越小、越放得下，因此满足性是
-        单调的，可用二分。找不到满足约束的字号时返回下界，与原循环
-        在 pixelSize <= 8 时 break 的语义一致。
+        调用方保证 painter 存活；闭包会改动 painter 的字体，renderCache
+        在取到字号后会显式重设，故副作用不外泄。
         """
-        lo, hi = min(8, init_size), init_size
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
+
+        def measure(text, px):
             font = QFont(self.font_family)
             font.setBold(True)
-            font.setPixelSize(mid)
+            font.setPixelSize(px)
             painter.setFont(font)
             fm = painter.fontMetrics()
-            if fm.horizontalAdvance(text) <= max_w and fm.height() <= max_h:
-                lo = mid
-            else:
-                hi = mid - 1
-        return lo
+            return fm.horizontalAdvance(text), fm.height()
+
+        return measure
+
+    def _fit_min_px(self, init_size):
+        """字号下界。
+
+        取 min(8, init_size) 而非固定 8：转盘字号 spinbox 下限为 0（自动），
+        1~7 是用户可选的固定值，夹到 8 会让「设成 6」失效。
+        """
+        return min(layout.FONT_MIN_PX, init_size)
 
     def renderCache(self):
         """将当前所有项目绘制到一个固定 pixmap 上（不包含旋转）"""
@@ -106,7 +110,7 @@ class WheelWidget(QWidget):
             return
 
         side = min(self.width(), self.height())
-        wheel_diameter = side * 0.88
+        wheel_diameter = side * layout.WHEEL_DIAMETER_RATIO
         radius = wheel_diameter / 2.0
         center = QPointF(side / 2.0, side / 2.0)
 
@@ -167,12 +171,13 @@ class WheelWidget(QWidget):
         painter.restore()
 
         # ---------- 绘制文字（完全沿用原版逻辑，仅将全局坐标改为未旋转下的固定位置） ----------
-        text_radius = radius * 0.62
+        text_radius = radius * layout.TEXT_RADIUS_RATIO
         num = len(self.items)
         sector_span = 360.0 / num
         # 宽高约束与文本无关，整批文字共用
-        max_w = (radius - text_radius) * 0.9
-        max_h = text_radius * math.radians(sector_span) * 0.7
+        max_w, max_h = layout.text_box(radius, sector_span)
+
+        measure = self._measure(painter)
 
         for i, item in enumerate(self.items):
             # 扇区中线角度（未旋转）
@@ -182,20 +187,24 @@ class WheelWidget(QWidget):
             lx = text_radius * math.cos(mid_angle_rad)
             ly = text_radius * math.sin(mid_angle_rad)
 
-            # 动态字体大小（与原版语义相同，见 _fit_font_size）
+            # 动态字体大小
             font = QFont(self.font_family)
             font.setBold(True)
             if self.font_size > 0:
                 init_size = self.font_size
             else:
-                init_size = max(10, int(radius * 0.18))
+                init_size = layout.auto_font_start_px(radius)
             # 重复文本复用同一字号：真实数据重复率约四成，二分查找只需为
-            # 每个唯一文本做一次
-            cache_key = (item, self.font_family, init_size, max_w, max_h)
-            size = self._font_size_cache.get(cache_key)
-            if size is None:
-                size = self._fit_font_size(painter, item, init_size, max_w, max_h)
-                self._font_size_cache[cache_key] = size
+            # 每个唯一文本做一次。缓存键不含字体家族，由 setFontFamily
+            # 清空来保证正确性。
+            size = self._font_size_cache.fit(
+                item,
+                max_w,
+                max_h,
+                measure,
+                start_px=init_size,
+                min_px=self._fit_min_px(init_size),
+            )
             font.setPixelSize(size)
             painter.setFont(font)
             fm = painter.fontMetrics()
@@ -437,7 +446,7 @@ class WheelWidget(QWidget):
         if self.spinning:
             return
         side = min(self.width(), self.height())
-        radius = side * 0.88 / 2.0
+        radius = side * layout.WHEEL_DIAMETER_RATIO / 2.0
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
         click_pos = event.position()
         dist = math.hypot(click_pos.x() - center.x(), click_pos.y() - center.y())

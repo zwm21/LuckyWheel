@@ -31,8 +31,11 @@ def fit_font_size(text, max_w, max_h, measure, start_px=None, min_px=FONT_MIN_PX
 
     Returns:
         能容纳的最大字号，或 min_px（连最小字号都放不下时）。
+
+    空文本不特殊处理：`fm.height()` 与文本无关，空串在小 max_h 下同样
+    需要收缩，交给 measure 判定才能与逐像素递减的旧实现逐点相等。
     """
-    if not text or max_w <= 0 or max_h <= 0:
+    if max_w <= 0 or max_h <= 0:
         return max(min_px, 1)
     if start_px is None:
         start_px = FONT_MIN_PX_BY_RADIUS

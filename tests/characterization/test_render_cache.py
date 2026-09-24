@@ -19,7 +19,24 @@ from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtGui import QFont, QImage, QPainter, QPaintEvent, QPixmap, QRegion
 from PyQt6.QtWidgets import QWidget
 
+from luckywheel.core import layout
 from main import RESIZE_DEBOUNCE_MS, WheelWidget
+
+
+def fit_size(wheel, painter, text, init_size, max_w, max_h):
+    """复刻 renderCache 的字号求解调用。
+
+    算法住在 core.layout；下界经 wheel._fit_min_px（min(8, init_size)），
+    测量由 wheel._measure 绑定当前字体家族。
+    """
+    return layout.fit_font_size(
+        text,
+        max_w,
+        max_h,
+        wheel._measure(painter),
+        start_px=init_size,
+        min_px=wheel._fit_min_px(init_size),
+    )
 
 
 class _Measurer:
@@ -93,7 +110,7 @@ class TestFontSizeBinarySearch:
                 break
             expected -= 1
 
-        actual = wheel._fit_font_size(measurer.painter, text, init_size, max_w, max_h)
+        actual = fit_size(wheel, measurer.painter, text, init_size, max_w, max_h)
         assert actual == expected
 
     @pytest.mark.parametrize("init_size", [10, 16, 33, 64])
@@ -101,7 +118,7 @@ class TestFontSizeBinarySearch:
         """未达下界必须放得下；结果小于初值时，结果+1 必须放不下。"""
         text = "一二三四五六七八九十"
         _, max_w, max_h = _constraints(wheel)
-        size = wheel._fit_font_size(measurer.painter, text, init_size, max_w, max_h)
+        size = fit_size(wheel, measurer.painter, text, init_size, max_w, max_h)
 
         assert min(8, init_size) <= size <= init_size
         if size > min(8, init_size):
@@ -113,12 +130,12 @@ class TestFontSizeBinarySearch:
         """固定字号 <= 8 时不再收缩（原循环在 pixelSize <= 8 时 break）。"""
         _, max_w, max_h = _constraints(wheel)
         text = "一二三四五六七八九十壹贰叁肆伍"
-        assert wheel._fit_font_size(measurer.painter, text, 6, max_w, max_h) == 6
+        assert fit_size(wheel, measurer.painter, text, 6, max_w, max_h) == 6
 
     def test_unsatisfiable_falls_back_to_lower_bound(self, wheel, measurer):
         """约束苛刻到连下界都放不下时，回退到下界而非死循环。"""
         text = "一二三四五六七八九十壹贰叁肆伍"
-        size = wheel._fit_font_size(measurer.painter, text, 40, 1.0, 1.0)
+        size = fit_size(wheel, measurer.painter, text, 40, 1.0, 1.0)
         assert size == 8
 
 
@@ -127,13 +144,14 @@ class TestFontSizeCache:
 
     @staticmethod
     def _spy_fit(monkeypatch, seen):
-        original = WheelWidget._fit_font_size
+        """拦在 core.layout.fit_font_size 上：FontSizeCache 命中时不该到达这里。"""
+        original = layout.fit_font_size
 
-        def spy(self, painter, text, init_size, max_w, max_h):
+        def spy(text, *args, **kwargs):
             seen.append(text)
-            return original(self, painter, text, init_size, max_w, max_h)
+            return original(text, *args, **kwargs)
 
-        monkeypatch.setattr(WheelWidget, "_fit_font_size", spy)
+        monkeypatch.setattr(layout, "fit_font_size", spy)
 
     def test_repeated_text_measured_once(self, qtbot, monkeypatch):
         wheel = WheelWidget()
@@ -152,12 +170,12 @@ class TestFontSizeCache:
         wheel.setItems(["测试文本"])
         wheel.resize(600, 600)
         wheel.renderCache()
-        assert wheel._font_size_cache, "渲染后应留下字号缓存"
+        assert len(wheel._font_size_cache) > 0, "渲染后应留下字号缓存"
 
         measured = []
         self._spy_fit(monkeypatch, measured)
         wheel.setFontFamily("SimSun")
-        assert wheel._font_size_cache == {}
+        assert len(wheel._font_size_cache) == 0
         wheel.renderCache()
         assert measured == ["测试文本"], "换字体后必须重新测量"
 
@@ -171,7 +189,7 @@ class TestFontSizeCache:
         measured = []
         self._spy_fit(monkeypatch, measured)
         wheel.setFontSize(64)
-        assert wheel._font_size_cache == {}
+        assert len(wheel._font_size_cache) == 0
         wheel.renderCache()
         assert measured == ["测试文本"], "固定字号变更后必须重新测量"
 
