@@ -20,7 +20,7 @@ from PyQt6.QtGui import QFont, QImage, QPainter, QPaintEvent, QPixmap, QRegion
 from PyQt6.QtWidgets import QWidget
 
 from luckywheel.core import layout
-from main import RESIZE_DEBOUNCE_MS, WheelWidget
+from luckywheel.ui.wheel import RESIZE_DEBOUNCE_MS, WheelWidget
 
 
 def fit_size(wheel, painter, text, init_size, max_w, max_h):

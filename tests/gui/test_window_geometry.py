@@ -32,7 +32,7 @@ def build_window(qtbot, monkeypatch, tmp_path, geometry):
     不固定就无法对坐标做断言。注意 setMinimumSize(850, 600) 会把更窄
     的恢复宽度撑开，夹具几何一律用不低于最小值的尺寸。
     """
-    from main import MainWindow
+    from luckywheel.ui.main_window import MainWindow
 
     data = json.loads(open(VALID_FIXTURE, encoding="utf-8").read())
     data["window_geometry"] = geometry
@@ -113,7 +113,7 @@ class TestGeometryScreenValidation:
 
 class TestSetItemsKeepsRotation:
     def test_rotation_survives_set_items(self, qtbot):
-        from main import WheelWidget
+        from luckywheel.ui.wheel import WheelWidget
 
         wheel = WheelWidget()
         qtbot.addWidget(wheel)
@@ -124,7 +124,7 @@ class TestSetItemsKeepsRotation:
 
     def test_set_items_still_stops_spin(self, qtbot):
         """删归零不得顺手删掉 stopSpin：旋转中换列表必须停下。"""
-        from main import WheelWidget
+        from luckywheel.ui.wheel import WheelWidget
 
         wheel = WheelWidget()
         qtbot.addWidget(wheel)

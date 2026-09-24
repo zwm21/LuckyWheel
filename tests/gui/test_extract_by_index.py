@@ -20,7 +20,7 @@ def rotation_pointing_at(index, count):
 @pytest.fixture
 def window(qtbot, monkeypatch, tmp_path):
     """装配好 ["A", "A", "B"] 的 MainWindow，数据文件隔离到临时目录。"""
-    from main import MainWindow
+    from luckywheel.ui.main_window import MainWindow
 
     monkeypatch.setattr(
         "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)

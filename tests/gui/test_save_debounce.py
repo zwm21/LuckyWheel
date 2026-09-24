@@ -15,7 +15,7 @@ from luckywheel.core import storage
 @pytest.fixture
 def window(qtbot, monkeypatch, tmp_path):
     """MainWindow 实例，数据文件隔离到临时目录（不碰用户真实数据）。"""
-    from main import MainWindow
+    from luckywheel.ui.main_window import MainWindow
 
     monkeypatch.setattr(
         "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)

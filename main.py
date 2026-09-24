@@ -4,15 +4,16 @@
 app.py 入口）；`python -m luckywheel` 等价于本文件。此文件保留是
 为了老用户的使用习惯与桌面快捷方式。
 
-以下 re-export 服务于既有测试与脚本的 `from main import ...`：
-MainWindow、SECTOR_COLORS、SAVE_DEBOUNCE_MS、RESIZE_DEBOUNCE_MS、WheelWidget。
+只 re-export 一个 MainWindow，供 scripts/verify_gui.py --entry main
+走旧入口冒烟。测试与其他脚本一律直接从 luckywheel.* 导入：re-export
+清单越长，这个 wrapper 就越像事实上的 API 门面，改动 ui/ 的模块划分
+时反而要先绕过它。
 """
 
 import sys
 
 from luckywheel.app import main
-from luckywheel.ui.main_window import SAVE_DEBOUNCE_MS, MainWindow  # noqa: F401
-from luckywheel.ui.wheel import RESIZE_DEBOUNCE_MS, SECTOR_COLORS, WheelWidget  # noqa: F401
+from luckywheel.ui.main_window import MainWindow  # noqa: F401
 
 if __name__ == "__main__":
     sys.exit(main())

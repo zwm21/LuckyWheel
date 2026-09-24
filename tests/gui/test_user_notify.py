@@ -16,7 +16,7 @@ from luckywheel.core import storage
 
 @pytest.fixture
 def window(qtbot, monkeypatch, tmp_path):
-    from main import MainWindow
+    from luckywheel.ui.main_window import MainWindow
 
     monkeypatch.setattr(
         "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)
@@ -56,7 +56,7 @@ class TestSaveFailureNotifies:
 class TestMigrationNotifies:
     def test_relocation_shows_dialog(self, qtbot, monkeypatch, tmp_path, no_modal_dialogs):
         """便携位置不可写、数据要搬家时，必须告知用户（原为 print）。"""
-        from main import MainWindow
+        from luckywheel.ui.main_window import MainWindow
 
         old = tmp_path / "beside_exe.json"
         new = tmp_path / "user_dir" / "wheel_data.json"

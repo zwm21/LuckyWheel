@@ -15,7 +15,7 @@ from luckywheel.core.spin import sector_at
 @pytest.fixture
 def fast_wheel(qtbot):
     """加速版转盘：动画时长除以 60，冒烟与统计都能在秒级跑完。"""
-    from main import WheelWidget
+    from luckywheel.ui.wheel import WheelWidget
 
     wheel = WheelWidget()
     qtbot.addWidget(wheel)

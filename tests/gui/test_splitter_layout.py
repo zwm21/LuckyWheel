@@ -11,7 +11,7 @@ import pytest
 @pytest.fixture
 def window(qtbot, monkeypatch, tmp_path):
     """数据文件隔离到临时目录的 MainWindow。"""
-    from main import MainWindow
+    from luckywheel.ui.main_window import MainWindow
 
     monkeypatch.setattr(
         "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)
@@ -30,23 +30,24 @@ class TestSplitterLayout:
         assert [window.list_splitter.widget(i) for i in range(3)] == panes
 
     def test_legacy_handle_gone(self, window):
-        """SplitterHandle 类与高度钳制逻辑都已移除。"""
-        from main import MainWindow
+        """SplitterHandle 类与高度钳制逻辑都已移除。
+
+        SplitterHandle 要查 luckywheel.ui.main_window，不是根级 main.py：
+        后者只是十几行的 re-export wrapper，在它身上找这个类永远找不到，
+        断言等于空转。
+        """
+        from luckywheel.ui import main_window as main_window_module
+        from luckywheel.ui.main_window import MainWindow
 
         assert not hasattr(window, "splitter_handle")
         assert not hasattr(window, "drawn_splitter_handle")
         assert "resizeEvent" not in MainWindow.__dict__, "MainWindow 不得再有自己的 resizeEvent"
-        try:
-            import main as legacy_main
-
-            assert not hasattr(legacy_main, "SplitterHandle"), "SplitterHandle 类应删除"
-        finally:
-            pass
+        assert not hasattr(main_window_module, "SplitterHandle"), "SplitterHandle 类应删除"
 
     def test_initial_sizes_from_saved_heights(self, qtbot, monkeypatch, tmp_path):
         import json
 
-        from main import MainWindow
+        from luckywheel.ui.main_window import MainWindow
 
         data = json.loads(open("tests/data/valid_v2.json", encoding="utf-8").read())
         data["list_height"] = 260

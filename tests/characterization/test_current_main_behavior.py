@@ -1,11 +1,11 @@
-"""特征测试：钉住 main.py 当前（重构前）的可观察行为。
+"""特征测试：钉住重构前后必须逐点一致的可观察行为。
 
 这些用例描述的是**现状**而非期望值。它们有两个用途：
-1. 重构到 src/luckywheel 后作为等价性对照，防止搬运时改变行为；
+1. 作为搬运到 src/luckywheel 前后的等价性对照；
 2. 记录已知缺陷的量化事实（见 test_fairness.py 与像素快照用例）。
 
-与 core 对应的用例在阶段 3 完成后迁移至 tests/unit/，
-与 GUI 对应的迁移至 tests/gui/。
+被测对象一律从 `luckywheel.*` 导入。根级 main.py 只在 TestEntryDelegation
+里出现——那一组钉的正是「main.py 自己不得再有实现」，所以必须直接摸它。
 """
 
 import json
@@ -20,7 +20,7 @@ from PyQt6.QtGui import QColor
 import luckywheel
 import main as legacy_main
 from luckywheel.ui import theme as ui_theme
-from main import SECTOR_COLORS, WheelWidget
+from luckywheel.ui.wheel import SECTOR_COLORS, WheelWidget
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SRC_DIR = Path(luckywheel.__file__).resolve().parent
