@@ -23,15 +23,31 @@ APP_NAME = "LuckyWheel"
 # 入口最稳（无需处理 -m 形式的 spec）；GUI 冒烟亦以 --entry main 为基准
 ENTRY = ROOT / "main.py"
 
+# 运行时认的字体文件名从 core.paths 取而非在此重抄一份：抄一份就会各自漂移，
+# 而漂移的表现是"打包报告已内嵌、运行时静默回退"，两边都不报错。
+sys.path.insert(0, str(ROOT / "src"))
+from luckywheel.core.paths import FONT_FILE_NAME  # noqa: E402
+
 
 def find_font():
+    """返回要内嵌的字体文件，以及它是否就是运行时认的那个名字。
+
+    运行时（core.paths.FONT_FILE_NAME）只按固定文件名查找，不 glob 目录下的
+    任意 ttf——字体解析是可被恶意构造文件利用的攻击面。所以这里必须优先取
+    那个固定名；取到别名字体时仍然内嵌（--add-data 保留原名，至少 exe 里有
+    这份资源），但要显式说明运行时找不到它，否则打包脚本报告"已内嵌"而程序
+    静默回退到系统字体，两边都不报错。
+    """
     if not FONT_DIR.is_dir():
-        return None
+        return None, False
+    exact = FONT_DIR / FONT_FILE_NAME
+    if exact.is_file():
+        return exact, True
     for pattern in ("*.ttf", "*.otf"):
         fonts = sorted(FONT_DIR.glob(pattern))
         if fonts:
-            return fonts[0]
-    return None
+            return fonts[0], False
+    return None, False
 
 
 def build(onefile=True):
@@ -56,10 +72,13 @@ def build(onefile=True):
         cmd.append("--onedir")
     cmd.append("--windowed")
 
-    font = find_font()
+    font, runtime_match = find_font()
     if font:
         cmd += ["--add-data", f"{font}{';' if sys.platform == 'win32' else ':'}."]
         print(f"[*] 内嵌字体: {font.relative_to(ROOT)}")
+        if not runtime_match:
+            print(f"[!] 但运行时只按固定名 {FONT_FILE_NAME} 查找，这份字体不会被加载。")
+            print(f"    如需生效，请把文件改名为 {FONT_FILE_NAME}。")
     else:
         print("[!] 未找到 assets/fonts/ 下的字体文件，本次打包不内嵌字体。")
         print("    运行时将回退为系统默认字体（Microsoft YaHei）。")

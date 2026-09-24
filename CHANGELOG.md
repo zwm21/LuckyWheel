@@ -94,6 +94,60 @@
   多条告警合并为一次汇总提示而非每项一个弹窗；`save_state` 的备份从
   `os.replace` 改为 `shutil.copy2`，消除"先删旧再写新"两步之间的数据真空；
   `clamp` 为字号、列表高度、批量次数与窗口坐标补绝对上界，越界回落默认值。
+- **数据文件编码的两处缺陷**：中文 Windows 记事本默认按 ANSI(GBK) 另存会让
+  `read_text("utf-8")` 抛 `UnicodeDecodeError`——它是 `ValueError` 子类而非
+  `OSError`，漏捕就穿透 `loadData` 直达 `MainWindow.__init__`，程序起不来；
+  反过来，记事本"UTF-8"选项存的是带 BOM 的 UTF-8，而 `json` 不跳过前导
+  `﻿`，合法文件被判成损坏并整份隔离搬家。现读取走 `utf-8-sig`，
+  非 UTF-8 编码按损坏同等隔离。
+- **落盘的换行翻译**：保存走文本模式且未指定 `newline`，Windows 下把
+  `json.dumps(indent=2)` 的每个 LF 翻成 CRLF，而 `indent=2` 是一个条目一行
+  ——于是"体积检查刚好通过"的数据存回去就越过 8 MiB 上限，下次启动被整份
+  隔离，真实数据只剩在 `load_state` 从不读的 `.bak` 里（实测 3,800,386 字节
+  的 payload 落盘 4,000,406 字节，膨胀恰为行数）。改为自己 `encode` 后二进制
+  落盘。
+- **孤立代理字符导致保存永久失败**：数据文件里的 `"\ud800"` 字面量是纯 ASCII
+  字节，`json.loads` 照单接受、类型校验认它是 `str`，一路进 `AppState`；写盘时
+  `encode("utf-8")` 抛 `UnicodeEncodeError`，不被 `except OSError` 接住，此后
+  每次保存都失败、关窗的 `flushSave` 也失败，整场会话的改动无声丢失。现在
+  载入边界把无法编码的字符替换为 U+FFFD，写盘侧另把该异常归入 `StorageError`。
+- **告警累积峰值无界**：`MAX_WARNINGS` 的封顶只作用于单个 list，而分组告警在
+  各自的局部 list 里攒到 1001 条后才盲 `extend`，1000 个分组峰值 100 万条
+  字符串（实测 6.04 MiB 的文件 `tracemalloc` 峰值 148.1 MiB）。改为循环内即时
+  截断并累计省略数，同一输入峰值降到 9.4 MiB。条目数上限也从"已保留条数"改按
+  "已读位置"计——否则一组 140 万个 `null` 里保留数恒为 0，永远触不到上限。
+- **只读 `.bak` 上备份静默失效**：`os.replace` 覆盖只读文件在 Windows 抛
+  `PermissionError`，而备份失败被整个吞掉（备份不该阻塞主写入），于是用户看到
+  保存成功、主文件已更新、`.bak` 停在上一版。备份改走 `mkstemp` + `fsync` +
+  `replace`（`shutil.copy2` 会复制源的只读 mode，且中途失败会留下半截 `.bak`
+  覆盖掉上一份好备份），并对只读目标去掉只读位后重试一次。
+- **类型非法的字体家族击穿内嵌字体回退**：`clamp` 把非字符串的字体家族填成
+  `Microsoft YaHei`，`loadData` 的 `state.x or self.x` 回退从此不触发，启动期
+  选中的内嵌字体被丢弃且会被自动保存固化。改为一律回落 `None`。
+- **frozen 判据不统一**：`program_dir()` 看 `sys.frozen`、`font_candidates()`
+  看 `sys._MEIPASS`。PyInstaller 两种模式都设两者，但 cx_Freeze / py2exe 只设
+  前者，那里"frozen 但无 `_MEIPASS`"，仓库根候选会从毫无意义的 `parents[3]`
+  复活且仍排在 `program_dir()` 之前——字体加载劫持面换个打包器就重新敞开。
+  判据收拢为 `is_frozen()`；候选去重键由 `str().lower()` 改 `os.path.normcase`，
+  大小写敏感的文件系统上不再折叠掉真正不同的路径。
+- **去抖到点的二次重建**：`_onResizeSettled` 只看缓存是否存在、不看边长是否
+  已等于当前值，而去抖窗口内 `paintEvent` 可能因 dpr 变化按最终边长重建过，
+  于是同一份图建两次。`_invalidate_cache` 也未停表、未清待生效边长，旧值能活
+  过后续 resize。dpr 钳位收成一个两侧共用的取值函数（此前 `renderCache` 存
+  钳后值而 `paintEvent` 拿原值比较，dpr 取到 0 就每帧全量重建）。
+- **批量抽取的轮间停顿里按「停止」会多转一轮**：`QTimer.singleShot(400,
+  wheel.startSpin)` 不可取消，`startSpin` 也不看批量状态。界面已显示"批量抽取
+  完成"，400ms 后转盘又转一轮、宣布中奖、写上 `last_result_index` 并自动抽走
+  一个项目。续转改经查 `batch_remaining` 的入口。
+- **拖拽排序后旧中奖结果不失效**：排序不走 `updateWheelFromCurrentGroup`，
+  结果标签与 `last_result_index` 都留着，而同一扇区下已换成别的项目——标签仍
+  显示旧中奖项，「抽出」按旧下标 pop 的是另一项（宣布 A05 后把第 0 行拖到
+  第 5 行，抽出拿走的是 A00）。
+- **打包脚本与运行时的字体文件名脱钩**：`find_font()` 取 `assets/fonts/` 下
+  第一个 `*.ttf`/`*.otf` 并按原名 `--add-data`，而运行时只认固定名
+  `HYWenHei-65W.ttf`；放入别名字体时脚本报告"已内嵌"、运行时静默回退，两边都
+  不报错。现优先取那个固定名，取到别名时显式警告；`assets/fonts/README.md`
+  承诺的查找顺序也改为与实现一致。
 
 ### 移除
 - `dist/LuckyWheel.exe` 出版本控制（改由 GitHub Release 分发）。历史重写前
