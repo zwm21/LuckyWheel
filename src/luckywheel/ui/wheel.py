@@ -286,12 +286,15 @@ class WheelWidget(QWidget):
     def setItems(self, items):
         """设置转盘项目"""
         self.stopSpin()
-        # 内容与顺序都未变时不必失效缓存：调用方（刷新编排）每次都会带同一
-        # 份 group["items"] 进来，而它与 self.items 常是同一个 list 对象——
-        # 所以必须按值比较，不能只比身份（原地 pop 后身份不变内容已变）。
-        if items is self.items or list(items) == self.items:
+        # 内容与顺序都未变时不必失效缓存：调用方（刷新编排）每轮带的常是同一个
+        # list 对象，而它会原地增删（批量抽取的 pop、items_panel 的 append/
+        # shuffle）——身份不变内容已变。所以既要按值比较，也必须先拷贝一份
+        # 快照：不拷贝的话比较双方永远是同一个对象，别名场景恒判"未变"，
+        # pixmap 失效与 update() 整个被跳过，转盘一直画上一轮的旧扇区。
+        new_items = list(items)
+        if new_items == self.items:
             return
-        self.items = items
+        self.items = new_items
         # 注意：此处不再把 rotation 归零。旋转角是绘制相位，与项目列表
         # 无关；换列表时保留当前角度可避免视觉上的跳变，也让 setItems
         # 不会被误用作"重置转盘"的入口。

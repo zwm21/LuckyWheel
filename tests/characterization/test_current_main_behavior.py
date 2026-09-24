@@ -8,6 +8,7 @@
 里出现——那一组钉的正是「main.py 自己不得再有实现」，所以必须直接摸它。
 """
 
+import ast
 import json
 import math
 import shutil
@@ -280,7 +281,9 @@ class TestDeadCode:
     REMOVED_NAMES = (
         "QPropertyAnimation",
         "QEasingCurve",
-        "QFontMetrics",
+        # QFontMetrics 不在此列：批次 D 起它作为独立度量对象重新引入
+        # （QFontMetrics(QFont)，不再经 painter.setFont 污染绘制状态），
+        # 两条测量路径的等价性由 TestMeasurementPathsAgree 按 dpr 钉住。
         "QAction",
         "QFileDialog",
         "secrets",
@@ -288,20 +291,33 @@ class TestDeadCode:
 
     @staticmethod
     def _import_lines():
+        """用 ast 收集每个源文件的导入名，与源码书写格式解耦。
+
+        行首 startswith("import ") 的老写法会整块漏掉括号多行 import 的续行
+        （`from PyQt6.QtGui import (\n    QFontMetrics,\n    ...)`）——批次 D
+        把 import 拆成多行后，REMOVED_NAMES 的守卫就是这样被静默绕开的。
+        ast 只认真正的 import 语句，docstring 里提到的名字天然免疫。
+        """
         for path in sorted(SRC_DIR.rglob("*.py")):
-            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                stripped = line.strip()
-                if stripped.startswith(("import ", "from ")):
-                    yield path, lineno, stripped
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    names = [node.module or ""] + [alias.name for alias in node.names]
+                elif isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                else:
+                    continue
+                for name in names:
+                    yield path, node.lineno, name
 
     def test_removed_imports_do_not_return(self):
-        """只看 import 行：core/layout.py 的 docstring 里提到 QFontMetrics
-        是在说明测量函数的生产实现，属正常引用，不该被误判。"""
+        """只看真实 import 语句：core/layout.py 的 docstring 里提到
+        QFontMetrics 是在说明测量函数的生产实现，属正常引用，不该被误判。"""
         offenders = [
-            (path.name, lineno, line, name)
-            for path, lineno, line in self._import_lines()
+            (path.name, lineno, imported, name)
+            for path, lineno, imported in self._import_lines()
             for name in self.REMOVED_NAMES
-            if name in line
+            if name == imported
         ]
         assert not offenders, f"已清理的导入又回来了: {offenders}"
 

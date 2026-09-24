@@ -221,6 +221,47 @@ class TestFontSizeCache:
         assert measured == [], "同样内容与数量不应触发任何求解"
 
 
+class TestSetItemsAliasInvalidation:
+    """setItems 的"内容未变则短路"不得被调用方的 list 别名击穿。
+
+    wheel.items 与 group["items"] 常是同一个 list 对象（刷新编排每轮带的
+    就是它），而批量抽取会原地 pop、items_panel 会原地 append/shuffle——
+    身份不变内容已变。早期实现 `items is self.items or list(items) ==
+    self.items` 在别名场景下最先命中 is 比较，pixmap 失效与 update() 整个
+    被跳过：转盘一直画上一轮的旧扇区，而 startSpin/determineResult 用的是
+    新条目数，指针下的可见扇区与宣布的中奖项可以不一致。
+    """
+
+    def test_in_place_mutation_invalidates_cache(self, qtbot):
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        items = [f"ITEM{i:02d}" for i in range(8)]
+        wheel.setItems(items)
+        wheel.resize(600, 600)
+        wheel.renderCache()
+        first = wheel.cached_pixmap
+        assert first is not None
+
+        # 批量抽取的 pop、日常编辑的 append：改的是同一个 list 对象
+        items.pop(0)
+        items.append("EXTRA")
+        wheel.setItems(items)
+        wheel.renderCache()
+        assert wheel.cached_pixmap is not first, "别名原地修改后必须失效缓存重绘"
+        assert len(wheel.items) == len(items), "wheel 应持有变更后的条目"
+
+    def test_unchanged_content_still_short_circuits(self, qtbot):
+        """优化的前提是不破坏：内容与顺序都没变时仍然短路。"""
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        wheel.setItems(["A", "B", "C"])
+        wheel.resize(600, 600)
+        wheel.renderCache()
+        first = wheel.cached_pixmap
+        wheel.setItems(["A", "B", "C"])
+        assert wheel.cached_pixmap is first, "内容未变时短路不应失效缓存"
+
+
 class TestMeasurementPathsAgree:
     """_measure 用独立 QFontMetrics，renderCache 此前用 painter.fontMetrics()。
 
