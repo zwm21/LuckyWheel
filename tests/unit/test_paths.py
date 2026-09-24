@@ -79,6 +79,21 @@ class TestFontCandidates:
         seen = {str(c) for c in cands}
         assert len(seen) == len(cands)
 
+    def test_frozen_skips_repo_assets_candidate(self, monkeypatch, tmp_path):
+        """onefile 下 __file__ 位于 %TEMP%\\_MEIxxxxxx 内，parents[3] 会指向
+        %TEMP%：该候选排在 program_dir() 之前，而 %TEMP% 是任何用户态程序
+        都可写的目录，预置同名 ttf 即可劫持字体加载。frozen 时只应看解包
+        目录与 exe/脚本旁边。
+        """
+        fake_meipass = tmp_path / "_MEI12345"
+        fake_meipass.mkdir()
+        monkeypatch.setattr(sys, "_MEIPASS", str(fake_meipass), raising=False)
+        cands = font_candidates()
+        assert cands[0] == fake_meipass / paths.FONT_FILE_NAME
+        # 按路径分量匹配而非子串：tmp_path 的目录名由测试名生成，可能含 assets
+        assert not any(Path("assets") in c.parts for c in cands)
+        assert cands[-1] == program_dir() / paths.FONT_FILE_NAME
+
     def test_find_embedded_font_none_or_file(self):
         found = find_embedded_font()
         assert found is None or found.is_file()

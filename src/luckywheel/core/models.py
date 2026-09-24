@@ -171,4 +171,12 @@ def default_state():
     return AppState(
         groups=[Group(name=DEFAULT_GROUP_NAME, items=["选项1", "选项2", "选项3"], drawn=[])],
         current_group=0,
+        # 字体家族必须是 None（"数据未记录"）而不是 dataclass 默认的
+        # Microsoft YaHei：文件不存在/被隔离走的就是这里，若非 None，
+        # MainWindow.loadData 的 `state.x or self.x` 回退不触发，启动期
+        # loadEmbeddedFont 选中的内嵌字体被丢弃，还会在 loadData 末尾的
+        # saveData 里写盘固化——首启路径从此每次启动都从文件读回同一个
+        # 默认值，与打包版字体不一致。
+        ui_font_family=None,
+        wheel_font_family=None,
     )

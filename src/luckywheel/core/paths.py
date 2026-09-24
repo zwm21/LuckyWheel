@@ -103,8 +103,11 @@ def font_candidates(font_filename=None):
         Path(frozen_base) if frozen_base else None,
         # 源码运行：仓库根的 assets/fonts。parents: core, luckywheel, src, 仓库根
         # （与 program_dir() 同一级，早先误写 parents[2] 指向 src/assets/fonts，
-        # 该目录不存在，导致此候选永远落空）
-        Path(__file__).resolve().parents[3] / "assets" / "fonts",
+        # 该目录不存在，导致此候选永远落空）。仅非 frozen 加入：onefile 下
+        # __file__ 位于 %TEMP%\_MEIxxxxxx 内，parents[3] 会指向 %TEMP%——那是
+        # 任何用户态程序都可写的目录，而该候选又排在 program_dir() 之前，
+        # 预置同名 ttf 即可劫持字体加载。
+        (Path(__file__).resolve().parents[3] / "assets" / "fonts") if not frozen_base else None,
         program_dir(),  # exe/脚本旁边
     ]
     candidates = [base / name for base in bases if base is not None]

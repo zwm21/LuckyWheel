@@ -56,6 +56,20 @@ class TestLoad:
         assert "ui_font_family" not in state.to_dict()
         assert "wheel_font_family" not in state.to_dict()
 
+    def test_fresh_install_leaves_font_to_embedded(self, tmp_path):
+        """首启（文件不存在）走 default_state：字体家族必须是 None，
+        MainWindow.loadData 的 `state.x or self.x` 才会保留启动期
+        loadEmbeddedFont 选中的内嵌字体。若此处给默认字符串，内嵌字体被
+        丢弃，还会在 loadData 末尾的 saveData 里写盘固化，此后每次启动
+        都从文件读回同一个默认值（打包版与源码运行因此不一致）。
+        """
+        state, warnings = storage.load_state(tmp_path / "nothing.json")
+        assert state.ui_font_family is None
+        assert state.wheel_font_family is None
+        assert (state.ui_font_family or "HYWenHei") == "HYWenHei"
+        dumped = state.to_dict()
+        assert "ui_font_family" not in dumped and "wheel_font_family" not in dumped
+
     def test_legacy_font_family_still_splits(self):
         """旧 font_family 仍同时供 ui 与 wheel 两份使用。"""
         state, _ = storage.parse_state(
