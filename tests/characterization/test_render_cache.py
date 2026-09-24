@@ -23,17 +23,19 @@ from luckywheel.core import layout
 from luckywheel.ui.wheel import RESIZE_DEBOUNCE_MS, WheelWidget
 
 
-def fit_size(wheel, painter, text, init_size, max_w, max_h):
+def fit_size(wheel, text, init_size, max_w, max_h):
     """复刻 renderCache 的字号求解调用。
 
     算法住在 core.layout；下界经 wheel._fit_min_px（min(8, init_size)），
-    测量由 wheel._measure 绑定当前字体家族。
+    测量由 wheel._measure 绑定当前字体家族（内部用独立 QFontMetrics）。
+    同文件的 _Measurer 走 painter.fontMetrics()，两者结论一致由
+    TestMeasurementPathsAgree 钉住。
     """
     return layout.fit_font_size(
         text,
         max_w,
         max_h,
-        wheel._measure(painter),
+        wheel._measure(),
         start_px=init_size,
         min_px=wheel._fit_min_px(init_size),
     )
@@ -110,7 +112,7 @@ class TestFontSizeBinarySearch:
                 break
             expected -= 1
 
-        actual = fit_size(wheel, measurer.painter, text, init_size, max_w, max_h)
+        actual = fit_size(wheel, text, init_size, max_w, max_h)
         assert actual == expected
 
     @pytest.mark.parametrize("init_size", [10, 16, 33, 64])
@@ -118,7 +120,7 @@ class TestFontSizeBinarySearch:
         """未达下界必须放得下；结果小于初值时，结果+1 必须放不下。"""
         text = "一二三四五六七八九十"
         _, max_w, max_h = _constraints(wheel)
-        size = fit_size(wheel, measurer.painter, text, init_size, max_w, max_h)
+        size = fit_size(wheel, text, init_size, max_w, max_h)
 
         assert min(8, init_size) <= size <= init_size
         if size > min(8, init_size):
@@ -130,12 +132,12 @@ class TestFontSizeBinarySearch:
         """固定字号 <= 8 时不再收缩（原循环在 pixelSize <= 8 时 break）。"""
         _, max_w, max_h = _constraints(wheel)
         text = "一二三四五六七八九十壹贰叁肆伍"
-        assert fit_size(wheel, measurer.painter, text, 6, max_w, max_h) == 6
+        assert fit_size(wheel, text, 6, max_w, max_h) == 6
 
     def test_unsatisfiable_falls_back_to_lower_bound(self, wheel, measurer):
         """约束苛刻到连下界都放不下时，回退到下界而非死循环。"""
         text = "一二三四五六七八九十壹贰叁肆伍"
-        size = fit_size(wheel, measurer.painter, text, 40, 1.0, 1.0)
+        size = fit_size(wheel, text, 40, 1.0, 1.0)
         assert size == 8
 
 
@@ -164,7 +166,8 @@ class TestFontSizeCache:
         wheel.renderCache()
         assert measured == ["A", "B"], "重复文本只应为每个唯一值测量一次"
 
-    def test_font_family_change_clears_cache(self, qtbot, monkeypatch):
+    def test_font_family_change_does_not_reuse_sizes(self, qtbot, monkeypatch):
+        """换字体后不得沿用旧字号——缓存键含字体家族，无需手动清空。"""
         wheel = WheelWidget()
         qtbot.addWidget(wheel)
         wheel.setItems(["测试文本"])
@@ -175,11 +178,12 @@ class TestFontSizeCache:
         measured = []
         self._spy_fit(monkeypatch, measured)
         wheel.setFontFamily("SimSun")
-        assert len(wheel._font_size_cache) == 0
+        assert len(wheel._font_size_cache) >= 1, "旧家族的条目仍可命中，不应被清空"
         wheel.renderCache()
         assert measured == ["测试文本"], "换字体后必须重新测量"
 
-    def test_font_size_change_clears_cache(self, qtbot, monkeypatch):
+    def test_font_size_change_does_not_reuse_sizes(self, qtbot, monkeypatch):
+        """固定字号变更会改变二分起点，同样不得复用旧结果。"""
         wheel = WheelWidget()
         qtbot.addWidget(wheel)
         wheel.setItems(["测试文本"])
@@ -189,9 +193,74 @@ class TestFontSizeCache:
         measured = []
         self._spy_fit(monkeypatch, measured)
         wheel.setFontSize(64)
-        assert len(wheel._font_size_cache) == 0
+        assert len(wheel._font_size_cache) >= 1
         wheel.renderCache()
         assert measured == ["测试文本"], "固定字号变更后必须重新测量"
+
+    def test_same_items_again_hits_cache(self, qtbot, monkeypatch):
+        """同一批条目再次求解必须全部命中，不得重新二分。
+
+        拖拽排序、刷新列表都会用同样的内容再调一次 setItems。早期实现每次
+        setItems 都清空字号缓存，这些字号得全部重算（41 项里 17 个唯一值
+        即约 17 次二分）。键已含字体家族与可用宽高，清空成为多余动作。
+
+        注意边界：条目数变化会改变扇区弧长（max_h），字号确实要重算——
+        那是固有成本，不是缓存缺陷，故本用例刻意保持条目集合不变。
+        """
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        items = ["A", "B", "C"]
+        wheel.setItems(items)
+        wheel.resize(800, 800)
+        wheel.renderCache()
+
+        measured = []
+        self._spy_fit(monkeypatch, measured)
+        wheel.setItems(list(reversed(items)))  # 模拟拖拽排序后刷新
+        wheel.renderCache()
+        assert measured == [], "同样内容与数量不应触发任何求解"
+
+
+class TestMeasurementPathsAgree:
+    """_measure 用独立 QFontMetrics，renderCache 此前用 painter.fontMetrics()。
+
+    两条路径必须对同一字体逐点相等，否则换测量方式就会静默改变每个扇区的
+    字号（二分一旦在某个 px 上结论不同，落点就不同）。参数化 dpr：offscreen
+    下 devicePixelRatio 恒为 1，而 QPixmap 可设任意 dpr，故这里直接给
+    pixmap 设 dpr 来覆盖高 DPI 屏幕的情形。
+    """
+
+    TEXTS = ["A", "GO", "选项1", "hello world", "a" * 40, "标点，。！", "W"]
+    PXS = [8, 10, 12, 16, 20, 33, 48, 97]
+    FAMILIES = ["Microsoft YaHei", "Courier New"]
+
+    @pytest.mark.parametrize("dpr", [1.0, 1.5, 2.0, 3.0])
+    def test_both_paths_agree(self, qtbot, dpr):
+        wheel = WheelWidget()
+        qtbot.addWidget(wheel)
+        via_metrics = wheel._measure()
+
+        pixmap = QPixmap(400, 400)
+        pixmap.setDevicePixelRatio(dpr)
+        pixmap.fill()
+        painter = QPainter(pixmap)
+        try:
+            for family in self.FAMILIES:
+                wheel.setFontFamily(family)
+                via_metrics = wheel._measure()
+                for px in self.PXS:
+                    font = QFont(family)
+                    font.setBold(True)
+                    font.setPixelSize(px)
+                    painter.setFont(font)
+                    fm = painter.fontMetrics()
+                    for text in self.TEXTS:
+                        expected = (fm.horizontalAdvance(text), fm.height())
+                        assert via_metrics(text, px) == expected, (
+                            f"dpr={dpr} family={family} px={px} text={text!r}"
+                        )
+        finally:
+            painter.end()
 
 
 class TestCacheGuardOnResize:

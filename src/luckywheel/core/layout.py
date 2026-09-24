@@ -76,16 +76,21 @@ def text_box(radius, sector_span_deg):
 
 
 class FontSizeCache:
-    """(text, max_w, max_h) 三元组 → 字号 的结果缓存。
+    """(namespace, text, max_w, max_h, start_px, min_px) → 字号 的结果缓存。
 
-    批量求解前按调用方需要 clear()；相同的重复文本直接命中。
+    相同的重复文本直接命中。键已含字体家族与可用宽高，调用方不必手动清空。
+
+    namespace 用来把不同字体家族的度量分开：同一文本在不同字体下字号不同，
+    只按 text 缓存会串味。调用方传字体家族即可，不必在切换字体时记得清空
+    ——批量抽取每轮都会换一次条目列表，若那时清缓存，剩余条目的字号得全部
+    重新二分，而它们的文本与字体都没变。
     """
 
     def __init__(self):
         self._cache = {}
 
-    def fit(self, text, max_w, max_h, measure, start_px=None, min_px=FONT_MIN_PX):
-        key = (text, round(max_w, 3), round(max_h, 3), start_px, min_px)
+    def fit(self, text, max_w, max_h, measure, namespace="", start_px=None, min_px=FONT_MIN_PX):
+        key = (namespace, text, round(max_w, 3), round(max_h, 3), start_px, min_px)
         if key not in self._cache:
             self._cache[key] = fit_font_size(
                 text, max_w, max_h, measure, start_px=start_px, min_px=min_px

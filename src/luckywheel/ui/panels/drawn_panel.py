@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from luckywheel.ui.panels.base import Panel
+from luckywheel.ui.panels.base import Panel, sync_list_items
 
 
 class DrawnPanel(Panel):
@@ -53,8 +53,7 @@ class DrawnPanel(Panel):
             drawn_items = self.group.get("drawn_items", [])
         else:
             drawn_items = []
-        self.drawn_list_widget.clear()
-        self.drawn_list_widget.addItems(drawn_items)
+        sync_list_items(self.drawn_list_widget, drawn_items)
         self.updateDrawnButtonsState()
 
     def updateDrawnButtonsState(self):

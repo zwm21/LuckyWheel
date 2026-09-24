@@ -56,6 +56,15 @@
   `MainWindow` 一个 re-export，供 `--entry main` 冒烟走旧入口。清单越长，
   这个兼容 wrapper 就越像事实上的 API 门面，重排 `ui/` 的模块划分反而要先
   绕过它。
+- **列表刷新增量 diff**：批量抽取每轮原先对抽出列表与项目列表
+  `clear()+addItems()` 全量重建——41 项每轮重建 41 个条目，并丢掉选中项与
+  滚动位置，视觉上整表闪烁。改为只替换变化的那几行；转盘 `setItems` 在内容
+  与顺序都未变时直接短路，省掉整次 pixmap 重建与字号重算。
+- **测量路径**：字号求解原先每次测量都 `painter.setFont` 改动 pixmap 的
+  painter 状态（41 项约 287 次），改走独立的 `QFontMetrics(QFont)`，与绘制
+  前的文字预测量共用一条路径。两条路径对同一字体逐点相等由按 dpr 参数化的
+  回归测试钉住，像素基线确认输出不变。字号缓存键纳入字体家族，不再依赖
+  `setFontFamily`/`setItems` 手动 `clear()`。
 
 ### 修复
 - 窗口几何恢复时不做屏幕边界校验，副屏未连接时窗口可能位于屏幕外。
@@ -75,6 +84,16 @@
 - **CI 覆盖率从未采集 `ui/`**：`--cov=src/luckywheel.ui` 是点号不是斜杠，既非
   路径也非可导入名。修正后按实测值加上门禁（整体 75%、`core/` 90%），二进制
   守卫的后缀集合与 `scripts/precommit_no_binaries.py` 对齐（补 `.otf`）。
+- **源码运行永不加载内嵌字体**：`core/paths.py` 的 `parents[2]` 少退一层，
+  `find_embedded_font` 从不命中 `assets/fonts/`，源码运行恒回退
+  Microsoft YaHei，与打包版不一致（README 承诺的顺序实际未兑现）。修为
+  `parents[3]`，`bootstrap.loadEmbeddedFont` 改为委托同一实现，并让
+  `parse_state` 的字体家族缺键给 `None` 一路放行到 `loadData` 的回退。
+- **损坏数据的兜底缺口**：`load_state` 现把 `RecursionError`、超过大小/条目数
+  上限的文件一并按损坏处理（隔离保留为 `.corrupt-<时间戳>.json` 再启用默认值），
+  多条告警合并为一次汇总提示而非每项一个弹窗；`save_state` 的备份从
+  `os.replace` 改为 `shutil.copy2`，消除"先删旧再写新"两步之间的数据真空；
+  `clamp` 为字号、列表高度、批量次数与窗口坐标补绝对上界，越界回落默认值。
 
 ### 移除
 - `dist/LuckyWheel.exe` 出版本控制（改由 GitHub Release 分发）。历史重写前

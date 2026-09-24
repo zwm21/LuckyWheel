@@ -30,6 +30,7 @@ from luckywheel.ui.panels import (
     SettingsPanel,
     SpinPanel,
 )
+from luckywheel.ui.panels.base import sync_list_items
 from luckywheel.ui.save_scheduler import SaveScheduler
 from luckywheel.ui.wheel import SECTOR_COLORS, WheelWidget  # noqa: F401  (兼容旧导入路径)
 
@@ -413,14 +414,13 @@ class MainWindow(QMainWindow):
         self._updating_list = True
         if 0 <= self.current_group_index < len(self.groups):
             items = self.groups[self.current_group_index]["items"]
-            self.list_widget.clear()
-            self.list_widget.addItems(items)
+            sync_list_items(self.list_widget, items)
             self.wheel.setItems(items)
             self.result_label.setText("")
             self.last_result_index = None  # 数据已刷新，旧索引失效
             self.group_panel.updateGroupCombo()
         else:
-            self.list_widget.clear()
+            sync_list_items(self.list_widget, [])
             self.wheel.setItems([])
         self._updating_list = False
 

@@ -74,7 +74,7 @@
 
 - **P1** `ui/wheel.py:180-234`：文本阶段占 rebuild 约 98%，是唯一真瓶颈。实测 side=700 时扇区填充（策略 J 之后）仅 0.19/0.19/0.37 ms，而文本阶段 8.18/14.35/25.03 ms（n=41/100/200），约 0.12 ms/条。每条目约 9 次 `measure`（每次新建 `QFont` + `painter.setFont` + `fontMetrics`）外加 2 次 `drawText`（阴影使绘制翻倍）。方向：`measure` 改用独立的 `QFontMetrics(QFont)`，不污染 pixmap 的 painter。
 - **P2** `ui/wheel.py:405-442`：每帧重画静态装饰，实测 0.088 ms，是旋转 blit（0.03 ms）的 2.9 倍。每帧新建 `QFont`、解析 `QColor("#FF0000")`（实测 1.48 µs/次）、构造 `QPolygonF`。三者只依赖 `side`，应在 side 变化时缓存为第二张小 pixmap。
-- **P3** `panels/spin_panel.py:258 → panels/base.py:24 → main_window.py:381-383`：批量每轮全量重建，总量 O(n²)。每轮 `clear()+addItems()` 为 O(n)，且 `setItems` 清空字号缓存并使 pixmap 失效；n=200 时每轮多付一次 25 ms rebuild。方向：批量期对列表做增量 diff。
+- **P3** `panels/spin_panel.py:258 → panels/base.py:24 → main_window.py:381-383`：批量每轮全量重建列表。每轮 `clear()+addItems()` 为 O(k)，全批次累计 O(n²) 次 `QListWidgetItem` 构造；更要紧的是它丢掉选中项与滚动位置，视觉上整表闪烁，且 `setItems` 无条件清字号缓存并使 pixmap 失效。方向：列表改增量 diff（每轮只删/插变化的那几行）+ `setItems` 内容未变则短路。注意增量 diff 本身也是 O(k) 的前后缀扫描——它省的是常数（每轮构造 1 行而非 k 行）与观感，不是渐进复杂度；抽掉一项后条目数变化会改变扇区弧长，字号重算与 pixmap 重建仍是固有成本，这两项不能靠缓存消掉。
 - **P4** `ui/bootstrap.py:22-25`：源码运行永不加载内嵌字体（见 R2/R2a），导致字号求解的被测字体与生产字体不一致。批次 A 已修。
 
 ### 疑似问题（需实测后决定）
@@ -208,3 +208,34 @@ bool，`save_state` 备份改 `shutil.copy2`；`core/models.py` 增加字号/高
 验证：`pytest` 397 passed（与批次 B 同数，纯清理无新增用例）、`ruff check` 与
 `format --check` 干净、`verify_gui` 双入口各 12 个 `[ok]` 且 exit 0。`velocity_at` 删除后，
 "收尾速度约为初速度的 TAIL_RATIO" 这条性质改在 `eased_fraction` 上以斜率比断言，安全网未减弱。
+
+### 批次 D：渲染与交互性能优化（已完成）
+
+改动：`ui/wheel.py` 的 `_measure` 改用独立的 `QFontMetrics(QFont)`（`setBold(True)` +
+`setPixelSize(px)`），不再每次经 `painter.setFont` 去改动 pixmap 的 painter 状态——41 项时
+字号求解要做约 287 次测量，旧写法每次都动一次 painter；`renderCache` 里文字的
+`boundingRect` 预测量也改走同一个 `measure`，消除"求解用一条路径、绘制前又量一次"的割裂。
+`core/layout.py` 的 `FontSizeCache.fit` 增加 `namespace` 形参并纳入缓存键，`wheel.py` 传入
+字体家族，`setFontSize`/`setFontFamily`/`setItems` 三处手动 `clear()` 随之删除——正确性
+不再依赖调用方记得清缓存。`panels/base.py` 新增 `sync_list_items`：先找公共前后缀、只替换
+中间差异段，删除从后往前（`takeItem` 会立即重排行号），`main_window.updateWheelFromCurrentGroup`
+与 `drawn_panel.updateDrawnList` 改用它；`wheel.setItems` 增加"内容与顺序都未变则直接返回"
+的短路，且按值比较而非身份——刷新编排每轮带的常是同一个 list 对象，原地 pop 后身份不变
+内容已变。
+
+验证：`pytest` 420 passed（397 + 新增 23）、`ruff check` 与 `format --check` 干净、
+`verify_gui` 双入口各 12 个 `[ok]` 且 exit 0、`test_pixel_baseline.py` 5 passed。
+新增回归：`tests/characterization/test_render_cache.py::TestMeasurementPathsAgree` 按 dpr
+（1/1.25/1.5/2）参数化，逐点断言 `QFontMetrics(QFont)` 与 `painter.fontMetrics()` 两条测量
+路径对 7 个文本 × 8 个字号 × 2 种字重完全相等——这是 P1 没有静默改变任何扇区字号的客观
+证据，若二者有偏差，改 `_measure` 就会让每个扇区的字号漂移；`tests/unit/test_layout.py`
+补 namespace 分离与命中两例；`tests/gui/test_sync_list_items.py`（16 例）钉住增量 diff 的
+四条性质，其中用 monkeypatch 监视 `takeItem`/`insertItem` 的调用序列，确认公共前后缀的
+条目对象原样保留、纯追加不触发任何删除、删中间段按行号递减。
+
+不做的两项：P2（中心装饰与指针按 `side` 缓存为第二张小 pixmap）实测每帧 0.088 ms，即便
+全部省掉也是 0.1 ms 以下的量级，代价却是新增一处缓存状态与失效点，与批次 C 刚收敛出的
+单一缓存职责相悖；P5（字号硬底 8px 与 `max_h ≈ 2.728r/n` 冲突）问题确实存在——HYWenHei
+在 8px 的 `fm.height() == 9`，n≈93 时二分必然触底返回 8px，文字纵向溢出相邻扇区——但
+三种修法（下界改由 `max_h` 反推、超密截断、竖排）都会改变超密场景下的视觉输出，与
+"不影响软件功能"的总原则冲突，故只记录在案，留待用户决定。

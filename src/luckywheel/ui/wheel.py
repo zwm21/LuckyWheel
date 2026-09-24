@@ -15,7 +15,17 @@ import math
 import random
 
 from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer, QVariantAnimation, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
+from PyQt6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QFontMetrics,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 from luckywheel.core import layout, spin
@@ -83,22 +93,24 @@ class WheelWidget(QWidget):
         """设置转盘文字固定大小，0 为自动"""
         self.font_size = size
         self._invalidate_cache()
-        self._font_size_cache.clear()
         self.update()
 
-    def _measure(self, painter):
+    def _measure(self):
         """返回 (text, px) -> (宽, 高) 的测量闭包，绑定当前字体家族。
 
-        调用方保证 painter 存活；闭包会改动 painter 的字体，renderCache
-        在取到字号后会显式重设，故副作用不外泄。
+        用独立的 QFontMetrics(font) 而非 painter.fontMetrics()：后者要先
+        painter.setFont 再取度量，等于每次测量都改动 painter 状态，而字号
+        求解在 41 项时要做约 287 次测量（二分 + 缓存未命中项）。两条路径
+        对同一字体的度量逐点相等，由 tests/characterization/
+        test_render_cache.py::TestMeasurementPathsAgree 按 dpr 参数化钉住
+        ——若不相等，改这里就会静默改变每个扇区的字号。
         """
 
         def measure(text, px):
             font = QFont(self.font_family)
             font.setBold(True)
             font.setPixelSize(px)
-            painter.setFont(font)
-            fm = painter.fontMetrics()
+            fm = QFontMetrics(font)
             return fm.horizontalAdvance(text), fm.height()
 
         return measure
@@ -184,7 +196,7 @@ class WheelWidget(QWidget):
         # 宽高约束与文本无关，整批文字共用（num/sector_span 已在上方算过）
         max_w, max_h = layout.text_box(radius, sector_span)
 
-        measure = self._measure(painter)
+        measure = self._measure()
 
         for i, item in enumerate(self.items):
             # 扇区中线角度（未旋转）
@@ -202,22 +214,24 @@ class WheelWidget(QWidget):
             else:
                 init_size = layout.auto_font_start_px(radius)
             # 重复文本复用同一字号：真实数据重复率约四成，二分查找只需为
-            # 每个唯一文本做一次。缓存键不含字体家族，由 setFontFamily
-            # 清空来保证正确性。
+            # 每个唯一文本做一次。字体家族进缓存键，故 setFontFamily 与
+            # setItems 都不必再清空——清空反而让每轮批量抽取都重新二分
+            # 一遍文本与字体都没变的剩余条目。
             size = self._font_size_cache.fit(
                 item,
                 max_w,
                 max_h,
                 measure,
+                namespace=self.font_family,
                 start_px=init_size,
                 min_px=self._fit_min_px(init_size),
             )
             font.setPixelSize(size)
             painter.setFont(font)
-            fm = painter.fontMetrics()
-
-            text_w = fm.horizontalAdvance(item)
-            text_h = fm.height()
+            # 文字尺寸与字号求解走同一条测量路径（measure 内部用独立
+            # QFontMetrics）：若这里改回 painter.fontMetrics()，两条路径
+            # 一旦不一致就会出现"求解认为放得下、绘制时却超出"的偏差
+            text_w, text_h = measure(item, size)
 
             # 文字在 pixmap 中的位置（center 是 pixmap 中心，与 widget 中心相同计算方式）
             painter.save()
@@ -267,18 +281,23 @@ class WheelWidget(QWidget):
         """设置转盘文字的字体家族"""
         self.font_family = family
         self._invalidate_cache()
-        self._font_size_cache.clear()  # 不同字体的度量不同，缓存不得沿用
         self.update()
 
     def setItems(self, items):
         """设置转盘项目"""
         self.stopSpin()
+        # 内容与顺序都未变时不必失效缓存：调用方（刷新编排）每次都会带同一
+        # 份 group["items"] 进来，而它与 self.items 常是同一个 list 对象——
+        # 所以必须按值比较，不能只比身份（原地 pop 后身份不变内容已变）。
+        if items is self.items or list(items) == self.items:
+            return
         self.items = items
         # 注意：此处不再把 rotation 归零。旋转角是绘制相位，与项目列表
         # 无关；换列表时保留当前角度可避免视觉上的跳变，也让 setItems
         # 不会被误用作"重置转盘"的入口。
+        # 字号缓存也不清：键里已含字体家族与可用宽高，重复内容的字号与
+        # 此前完全一致，清了只会让同样的文本再二分一遍。
         self._invalidate_cache()
-        self._font_size_cache.clear()
         self.update()
 
     def resizeEvent(self, event):

@@ -144,3 +144,27 @@ class TestFontSizeCache:
         assert len(cache) == 1
         cache.clear()
         assert len(cache) == 0
+
+    def test_namespace_separates_font_families(self):
+        """同一文本在不同字体下字号不同，键必须带 namespace。
+
+        调用方（WheelWidget）传字体家族；若只按 text 缓存，换字体后会沿用
+        旧字体的求解结果。
+        """
+        narrow = lambda text, px: (len(text) * 0.3 * px, 1.2 * px)  # noqa: E731
+        wide = lambda text, px: (len(text) * 0.9 * px, 1.2 * px)  # noqa: E731
+        cache = FontSizeCache()
+        # max_h 给足，让宽度成为唯一约束：窄体在起点 40 就放得下，宽体要收缩
+        a = cache.fit("条目", 60, 1000, narrow, namespace="窄体", start_px=40)
+        b = cache.fit("条目", 60, 1000, wide, namespace="宽体", start_px=40)
+        assert a == 40, "窄体应放得下起点字号"
+        assert b == 33, "宽体应收缩到 60 / (2 * 0.9) = 33"
+        assert len(cache) == 2, "不同 namespace 不得共享条目"
+
+    def test_same_namespace_hits(self):
+        cache = FontSizeCache()
+        measure = Measurement()
+        first = cache.fit("A", 60, 30, measure, namespace="F", start_px=20)
+        calls = measure.calls
+        assert cache.fit("A", 60, 30, measure, namespace="F", start_px=20) == first
+        assert measure.calls == calls, "同 namespace 同参数应命中"
