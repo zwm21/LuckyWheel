@@ -19,11 +19,12 @@ jobs:
       # 版本控制，pre-commit 的 no-dist-or-fonts 与 check-added-large-files 之外
       # 的路径（如直接 push 到远端）仍可能把大文件带进仓库。注意 bash 默认带
       # -eo pipefail，无命中时 grep 返回 1 会让整条管道失败，故必须用 if 包裹。
-      - name: "Guard: no tracked binaries (exe/ttf)"
+      # 后缀集合与 scripts/precommit_no_binaries.py 保持一致（含 otf）。
+      - name: "Guard: no tracked binaries (exe/ttf/otf)"
         shell: bash
         run: |
-          if git ls-files | grep -E '\.(exe|ttf)$'; then
-            echo "::error::仓库中出现了受版本控制的二进制文件（exe/ttf）"
+          if git ls-files | grep -E '\.(exe|ttf|otf)$'; then
+            echo "::error::仓库中出现了受版本控制的二进制文件（exe/ttf/otf）"
             exit 1
           fi
 
@@ -39,12 +40,21 @@ jobs:
       - name: Lint (ruff)
         run: ruff check . && ruff format --check .
 
-      - name: Coverage (report only, gate deferred)
-        # 门禁暂时只打印不卡人：70% 的 core 单测门禁看不出 ui/ 的真实覆盖，
-        # 而 ui/ 依赖 Qt 事件循环，其正确性由 tests/gui 与特征测试断言，行覆盖
-        # 率数字意义有限。待 CI 首轮实跑出数后，再按「core ≥ 90%、整体 ≥ 60%」
-        # 的规划线收紧（该调整可能落在本计划之后的跟进批）。
-        run: pytest -q --cov=src/luckywheel/core --cov=src/luckywheel.ui --cov-report=term-missing
+      - name: Tests + coverage
+        # 门禁按 CI 首轮实测值设定，不凭规划里的数字盲设：整体 80%（panels
+        # 的交互分支主要由 tests/gui 覆盖，行覆盖率偏低是预期的），core 94%。
+        # 阈值留出余量，防止无关改动把构建弄红。
+        run: >-
+          pytest -q
+          --cov=src/luckywheel/core --cov=src/luckywheel/ui
+          --cov-report=term-missing --cov-fail-under=75
+
+      - name: "Gate: core coverage >= 90%"
+        # 复用上一步写下的 .coverage，不重跑整套用例。--include 用相对通配是
+        # 必须的：数据文件里记的是 src\luckywheel\core\... 这样的平台路径，
+        # 带前缀的 *luckywheel/core/* 在 Windows 上匹配不到。模式写错时
+        # coverage 打印 "No data to report." 并退出 1，门禁不会静默放过。
+        run: python -m coverage report --include="*/core/*" --fail-under=90
 
       - name: GUI smoke (main entry, offscreen)
         run: python scripts/verify_gui.py --entry main

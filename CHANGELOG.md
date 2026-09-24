@@ -11,7 +11,7 @@
   自动构建（`.github/workflows/release.yml`）。
 - `tests/`：特征测试、统计检验、offscreen GUI 冒烟（`scripts/verify_gui.py`）。
 - CI（`.github/workflows/ci.yml`）：ruff + pytest + GUI 冒烟（Windows，
-  Python 3.10/3.12/3.13），`core/` 覆盖率门禁 70%。
+  Python 3.10/3.12/3.13），覆盖率门禁整体 75%、`core/` 90%。
 
 ### 变更
 - **抽奖公平性**：旧实现按随机初速度+摩擦衰减停止，总转角跨度 2250°（6.25 圈），
@@ -58,6 +58,14 @@
   1²=1 无差别，故 offscreen 冒烟与仅断言画布尺寸的特征测试都无法暴露。已删除
   手动缩放，特征测试改为按不透明像素 bbox 断言"居中且不触边"（dpr² 下跨度可能
   仍接近期望值，但圆心必然偏移并被画布裁切，故居中断言才是关键）。
+- **三处永不失败的断言**：`or True` 短路的扇区颜色比对、拿窗口构造后的配色池
+  与自己比的"未被原地改动"、在十几行 wrapper 里找 `QPropertyAnimation` 的死
+  代码扫描。修复后逐条做了变异验证（人为引入缺陷确认能翻红）。特征测试不再
+  断言 `wheel_data.json`（用户运行时数据、已 gitignore）的具体内容，改对着
+  版本控制内的 `tests/data/legacy_v1.json`。
+- **CI 覆盖率从未采集 `ui/`**：`--cov=src/luckywheel.ui` 是点号不是斜杠，既非
+  路径也非可导入名。修正后按实测值加上门禁（整体 75%、`core/` 90%），二进制
+  守卫的后缀集合与 `scripts/precommit_no_binaries.py` 对齐（补 `.otf`）。
 
 ### 移除
 - `dist/LuckyWheel.exe` 出版本控制（改由 GitHub Release 分发）。历史重写前

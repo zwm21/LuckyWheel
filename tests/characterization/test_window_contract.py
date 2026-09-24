@@ -21,6 +21,13 @@ from PyQt6.QtGui import QPalette
 from PyQt6.QtWidgets import QWidget
 
 from luckywheel.ui import theme as ui_theme
+from luckywheel.ui import wheel as _wheel_module
+
+# 默认配色池在模块导入期（任何窗口构造之前）的快照。
+# test_constructing_window_does_not_mutate_default_pool 用它检测原地改动：
+# 快照必须早于窗口构造，否则比的是改动后的自己，断言永远为真。
+# tuple 本身拦不住对其中 QColor 逐个 setRgb，故按颜色名比对。
+POOL_AT_IMPORT = tuple(c.name() for c in _wheel_module.SECTOR_COLORS)
 
 # 外部消费者（verify_gui.py / tests/gui/* / tests/characterization/*）
 # 直接按名字访问的契约面。属性与方法分开列，失败信息更好读。
@@ -158,8 +165,8 @@ class TestSectorPaletteContract:
     def test_constructing_window_does_not_mutate_default_pool(self, window):
         from luckywheel.ui import wheel as wheel_module
 
-        before = list(wheel_module.SECTOR_COLORS)
-        assert list(wheel_module.SECTOR_COLORS) == before, "默认池被就地改动了"
+        now = tuple(c.name() for c in wheel_module.SECTOR_COLORS)
+        assert now == POOL_AT_IMPORT, "默认池被就地改动了"
 
     def test_wheel_gets_a_permutation_of_the_pool(self, window):
         from luckywheel.ui.wheel import SECTOR_COLORS

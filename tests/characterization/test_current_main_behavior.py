@@ -11,14 +11,19 @@
 import json
 import math
 import shutil
+from pathlib import Path
 
 import pytest
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QColor
 
+import luckywheel
 import main as legacy_main
 from luckywheel.ui import theme as ui_theme
 from main import SECTOR_COLORS, WheelWidget
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+SRC_DIR = Path(luckywheel.__file__).resolve().parent
 
 
 def _text_position(center, radius, theta_deg, text_radius_ratio=0.62):
@@ -29,21 +34,26 @@ def _text_position(center, radius, theta_deg, text_radius_ratio=0.62):
 
 
 class TestLegacyDataShape:
-    """当前真实数据文件的形状记录（该文件属用户数据，不作为仓库夹具）。"""
+    """旧格式数据文件的形状约束。
 
-    def test_real_wheel_data_shape(self, real_wheel_data, tmp_path):
-        path = real_wheel_data
-        if not path.exists():
-            pytest.skip("工作区无 wheel_data.json（用户数据文件）")
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+    形状断言对着版本控制内的 tests/data/legacy_v1.json，而不是工作区的
+    wheel_data.json——后者是用户运行时数据，程序一存盘就会被改写（新版
+    写入 version: 2），拿它当夹具会让用例在正常使用后无端翻红。真实文件
+    这里只做与内容无关的可读性检查。
+    """
+
+    def test_legacy_fixture_keeps_duplicate_items(self):
+        """重复项是旧数据的常态：按索引抽出与字号缓存都建立在这个事实上。"""
+        data = json.loads((DATA_DIR / "legacy_v1.json").read_text(encoding="utf-8"))
         items = data["groups"][0]["items"]
-        drawn = data["groups"][0]["drawn_items"]
-        assert len(items) == 41
-        assert len(set(items)) == 17  # 42% 重复，字号缓存与按索引抽出都受此影响
-        assert len(drawn) == 6
-        assert data["ui_font_family"] == "汉仪文黑-65W"
-        assert "version" not in data  # 旧格式：无 schema 版本号，迁移测试的依据
+        assert len(items) > len(set(items)), "夹具必须保留重复项"
+        assert "version" not in data, "旧格式无 schema 版本号，是迁移测试的依据"
+
+    def test_real_data_file_is_readable_json(self, real_wheel_data):
+        if not real_wheel_data.exists():
+            pytest.skip("工作区无 wheel_data.json（用户数据文件）")
+        data = json.loads(real_wheel_data.read_text(encoding="utf-8"))
+        assert isinstance(data.get("groups"), list), "数据文件必须含 groups 列表"
 
     def test_copy_roundtrip_preserves_bytes(self, real_wheel_data, tmp_path):
         """确认数据文件是干净的 UTF-8 JSON，移动/备份不会破坏它。"""
@@ -109,8 +119,10 @@ class TestDetermineResult:
         wheel.determineResult()
         idx, _text = captured[0]
         assert idx == sector_index
-        # 采样颜色应与该扇区绘制时的底色一致（镜像配对，见下一节说明）
-        assert sampled.name().lower() == SECTOR_COLORS[idx].name().lower() or True
+        # 采样点的底色是镜像扇区的颜色：arcTo 的正向扫掠与 (cosθ, sinθ)
+        # 参数化方向相反，故文字位置 i 落在填充下标 n-1-i 的扇区上
+        # （n=4/5/8 实测一致，wheel.py 的对比色取色即依赖此式）
+        assert sampled.name().lower() == SECTOR_COLORS[4 - 1 - idx].name().lower()
 
 
 class TestKnownDefects:
@@ -254,24 +266,58 @@ class TestEntryDelegation:
 
 
 class TestDeadCode:
-    """阶段 3 已清理的死代码：QPropertyAnimation/QEasingCurve/QFontMetrics/
-    QAction/QFileDialog/secrets 六个导入及 self.font_family 均已删除，
-    本类用例确认它们不再复现。"""
+    """阶段 3 清理掉的六个导入与调试 print 不得复现。
 
-    def test_no_unused_imports(self):
-        src = open(legacy_main.__file__, encoding="utf-8").read()
-        for name in (
-            "QPropertyAnimation",
-            "QEasingCurve",
-            "QFontMetrics",
-            "QAction",
-            "QFileDialog",
-            "import secrets",
-        ):
-            assert src.count(name) == 0, f"{name} 不应再出现在 main.py"
+    扫描的是 src/ 整棵树，不是根级 main.py——后者已收缩成十几行的兼容
+    wrapper，在它里面找 QPropertyAnimation 永远找不到，断言等于空转。
 
-    def test_mainwindow_font_family_removed(self):
-        """MainWindow.font_family 是死字段（loadEmbeddedFont 后只被调试 print 读取）。"""
-        src = open(legacy_main.__file__, encoding="utf-8").read()
-        assert 'font_family = "汉仪文黑-65W"  # 新增：当前字体家族' not in src
-        assert 'print("使用字体:", self.font_family)' not in src
+    与 ruff F401 的分工：F401 只抓「导入了但没用」，这里抓的是「重新导入
+    并用起来」——例如有人再把 secrets 用回旋转初速度（语义上是过度工程，
+    见 REFACTOR_PLAN_V2 的 M3），或把 QPropertyAnimation 用回动画实现。
+    那类回退 ruff 看不见。
+    """
+
+    REMOVED_NAMES = (
+        "QPropertyAnimation",
+        "QEasingCurve",
+        "QFontMetrics",
+        "QAction",
+        "QFileDialog",
+        "secrets",
+    )
+
+    @staticmethod
+    def _import_lines():
+        for path in sorted(SRC_DIR.rglob("*.py")):
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith(("import ", "from ")):
+                    yield path, lineno, stripped
+
+    def test_removed_imports_do_not_return(self):
+        """只看 import 行：core/layout.py 的 docstring 里提到 QFontMetrics
+        是在说明测量函数的生产实现，属正常引用，不该被误判。"""
+        offenders = [
+            (path.name, lineno, line, name)
+            for path, lineno, line in self._import_lines()
+            for name in self.REMOVED_NAMES
+            if name in line
+        ]
+        assert not offenders, f"已清理的导入又回来了: {offenders}"
+
+    def test_no_debug_print_in_src(self):
+        """启动/保存路径上的裸 print 会污染打包后的控制台，提示统一走
+        ui.bootstrap.notify。"""
+        offenders = [
+            (path.name, lineno)
+            for path in sorted(SRC_DIR.rglob("*.py"))
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if line.strip().startswith("print(")
+        ]
+        assert not offenders, f"src/ 下出现裸 print: {offenders}"
+
+    def test_mainwindow_has_no_singular_font_family_field(self):
+        """字体家族已拆成 ui_font_family / wheel_font_family 两份；
+        单数的 self.font_family 是旧死字段（只被调试 print 读取）。"""
+        src = (SRC_DIR / "ui" / "main_window.py").read_text(encoding="utf-8")
+        assert "self.font_family" not in src
