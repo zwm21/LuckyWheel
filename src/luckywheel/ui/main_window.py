@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 from luckywheel.core import paths as core_paths
 from luckywheel.core import storage
 from luckywheel.core.models import AppState, Group
-from luckywheel.ui.bootstrap import loadEmbeddedFont, notify, show_info  # noqa: F401
+from luckywheel.ui.bootstrap import loadEmbeddedFont, notify
 from luckywheel.ui.panels import (
     DrawnPanel,
     GroupPanel,
@@ -332,7 +332,7 @@ class MainWindow(QMainWindow):
         if self.splitter_sizes:
             self.splitter.setSizes(self.splitter_sizes)
         else:
-            self.splitter.setSizes([250, 600])  # 初始左侧 300px，右侧占剩余
+            self.splitter.setSizes([250, 600])  # 初始左侧 250px，右侧占剩余
 
         main_layout.addWidget(self.splitter)
 

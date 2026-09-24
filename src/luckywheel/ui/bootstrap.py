@@ -6,28 +6,28 @@
 （tests/conftest.py 的 no_modal_dialogs）。
 """
 
-import os
-import sys
-
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QMessageBox
 
+from luckywheel.core import paths
+
 
 def loadEmbeddedFont(font_filename):
-    """加载内嵌字体并返回族名，失败返回 None"""
-    # PyInstaller 打包后解压路径
-    if getattr(sys, "frozen", False):
-        base_dir = sys._MEIPASS
-    else:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-    font_path = os.path.join(base_dir, font_filename)
-    if os.path.exists(font_path):
-        font_id = QFontDatabase.addApplicationFont(font_path)
-        if font_id != -1:
-            families = QFontDatabase.applicationFontFamilies(font_id)
-            if families:
-                return families[0]  # 返回族名
+    """加载内嵌字体并返回族名，失败返回 None。
+
+    查找顺序收敛在 core.paths.font_candidates（frozen 解包目录 → 仓库
+    assets/fonts → 程序旁边），此处不再另写一套：源码运行与打包版因此
+    用同一份字体，字号求解测得的度量才与生产一致。
+    """
+    font_path = paths.find_embedded_font(font_filename)
+    if font_path is None:
+        return None
+    font_id = QFontDatabase.addApplicationFont(str(font_path))
+    if font_id != -1:
+        families = QFontDatabase.applicationFontFamilies(font_id)
+        if families:
+            return families[0]  # 返回族名
     return None
 
 

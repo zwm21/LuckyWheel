@@ -29,6 +29,3 @@ htmlcov/
 wheel_data.json
 wheel_data.corrupt-*.json
 wheel_data.json.bak
-
-# 文档
-docs/

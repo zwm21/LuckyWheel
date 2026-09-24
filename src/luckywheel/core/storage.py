@@ -79,11 +79,13 @@ def parse_state(data, source_name="数据"):
     state = AppState(
         groups=groups if groups else default_state().groups,
         current_group=current,
-        ui_font_family=data.get("ui_font_family", data.get("font_family", AppState.ui_font_family)),
+        ui_font_family=data.get("ui_font_family", data.get("font_family")),
         ui_font_size=data.get("ui_font_size", AppState.ui_font_size),
-        wheel_font_family=data.get(
-            "wheel_font_family", data.get("font_family", AppState.wheel_font_family)
-        ),
+        # 字体家族缺键时必须是 None 而不是默认字符串：MainWindow.loadData 用
+        # `state.x or self.x` 保留启动期 loadEmbeddedFont 已确定的字体，若此处
+        # 填了默认值，那个回退永远不触发，源码运行就永远用不到 assets/fonts/
+        # 下的字体、与打包版不一致（该回退曾因这个原因完全失效）。
+        wheel_font_family=data.get("wheel_font_family", data.get("font_family")),
         wheel_font_size=data.get("wheel_font_size", AppState.wheel_font_size),
         shadow_enabled=data.get("shadow_enabled", AppState.shadow_enabled),
         window_geometry=data.get("window_geometry"),

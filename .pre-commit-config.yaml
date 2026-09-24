@@ -25,6 +25,8 @@ repos:
 
   # 本地守卫：拒绝把 dist/ 二进制与用户字体暂存进仓库。
   # 历史因 8 次提交 37MB exe 使 .git 膨胀到 289MB，此 hook 防止重蹈。
+  # 注意不能加 types: [text]——pre-commit 会先按类型过滤，exe/ttf 属
+  # binary，加了之后脚本根本收不到要拦的文件名，恰在要防的场景里空转。
   - repo: local
     hooks:
       - id: no-dist-or-fonts
@@ -32,4 +34,3 @@ repos:
         entry: python scripts/precommit_no_binaries.py
         language: system
         pass_filenames: true
-        types: [text]

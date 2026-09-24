@@ -64,9 +64,7 @@ class AppState:
             "version": self.version,
             "groups": [g.to_dict() for g in self.groups],
             "current_group": self.current_group,
-            "ui_font_family": self.ui_font_family,
             "ui_font_size": self.ui_font_size,
-            "wheel_font_family": self.wheel_font_family,
             "wheel_font_size": self.wheel_font_size,
             "shadow_enabled": self.shadow_enabled,
             "list_height": self.list_height,
@@ -74,6 +72,12 @@ class AppState:
             "batch_spin_count": self.batch_spin_count,
             "theme": self.theme,
         }
+        # 字体家族为 None（数据文件未记录）时不写键，让下次读取继续走
+        # loadEmbeddedFont 的回退，而不是把某个默认值固化成用户选择
+        if self.ui_font_family is not None:
+            data["ui_font_family"] = self.ui_font_family
+        if self.wheel_font_family is not None:
+            data["wheel_font_family"] = self.wheel_font_family
         if self.window_geometry is not None:
             data["window_geometry"] = list(self.window_geometry)
         if self.splitter_sizes is not None:
@@ -113,10 +117,13 @@ class AppState:
             self.current_group = 0
         if self.theme not in THEMES:
             self.theme = "light"
-        # 字体家族直接进 QFont()，非字符串会 TypeError
-        if not isinstance(self.ui_font_family, str):
+        # 字体家族直接进 QFont()，非字符串会 TypeError。None 是合法值，表示
+        # "数据文件未记录"，由调用方（MainWindow.loadData）用启动期
+        # loadEmbeddedFont 的选择回填；此处不得擅自填默认值，否则那个回退
+        # 永远不触发，源码运行与打包版字体不一致。
+        if self.ui_font_family is not None and not isinstance(self.ui_font_family, str):
             self.ui_font_family = DEFAULT_UI_FONT
-        if not isinstance(self.wheel_font_family, str):
+        if self.wheel_font_family is not None and not isinstance(self.wheel_font_family, str):
             self.wheel_font_family = DEFAULT_WHEEL_FONT
         # isinstance(x, bool) 要先排除：bool 是 int 子类，True 会混过字号校验
         if not _is_int(self.ui_font_size) or self.ui_font_size < 1:

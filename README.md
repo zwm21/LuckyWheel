@@ -63,8 +63,9 @@ python scripts/build_exe.py
 
 字体是可选的。仓库不内置任何字体文件（版权归属原作者），如需内嵌，把
 `HYWenHei-65W.ttf` 之类的文件放入 `assets/fonts/`，打包脚本会自动检测并打入；
-源码运行时程序也按该目录 → 程序所在目录 → exe 解包目录的顺序查找，全部失败时
-回退为 Microsoft YaHei。不放字体不影响功能，只影响界面与转盘文字的字体。
+查找顺序由 `core/paths.py` 统一给出——打包版先看 exe 解包目录，源码运行时按
+`assets/fonts/` → 程序所在目录，全部失败时回退为 Microsoft YaHei。不放字体不
+影响功能，只影响界面与转盘文字的字体。
 
 打包产物在 `dist/LuckyWheel.exe`，双击即可运行，无需 Python 环境。
 
@@ -80,14 +81,26 @@ src/luckywheel/
     layout.py               转盘扇区几何与字号自适应
     paths.py                数据文件与字体的查找路径
   ui/
-    main_window.py          主窗口与全部交互
+    main_window.py          主窗口：装配、数据读写、几何恢复与面板编排
     wheel.py                转盘控件（渲染、动画、命中判定）
     theme.py                明暗主题调色板与 QSS 模板
+    palette.py              扇区默认配色池
+    save_scheduler.py       保存去抖调度
+    bootstrap.py            内嵌字体加载与非模态提示
+    panels/                 左栏与抽取卡片的面板
+      base.py               面板公共基类
+      group_panel.py        分组增删改
+      items_panel.py        项目编辑、拖拽排序、批量导入
+      drawn_panel.py        抽出项目列表与操作
+      settings_panel.py     字体、阴影、主题设置
+      spin_panel.py         单次/批量抽取与结果展示
   app.py                    入口（create_window / run / main）
+  __main__.py               python -m luckywheel 的入口
 tests/                      见上文
 scripts/
   build_exe.py              字体可选的打包脚本
   verify_gui.py             offscreen GUI 冒烟
+  precommit_no_binaries.py  pre-commit 守卫：拒绝二进制入库
 ```
 
 ## 功能说明

@@ -35,6 +35,41 @@ class TestLoad:
         assert state.groups[0].items == ["选项1", "选项2", "选项3"]
         assert warnings == []
 
+    def test_unrecorded_font_family_stays_none(self, tmp_path):
+        """数据文件未记录字体家族时必须给 None，不能给默认字符串。
+
+        MainWindow.loadData 用 `state.x or self.x` 保留启动期 loadEmbeddedFont
+        的选择；此处若填默认值，那个回退永不触发，源码运行就用不到
+        assets/fonts/ 下的字体、与打包版不一致。
+        """
+        path = tmp_path / "d.json"
+        path.write_text(
+            json.dumps({"version": SCHEMA_VERSION, "groups": [{"name": "g", "items": ["a"]}]}),
+            encoding="utf-8",
+        )
+        state, _ = storage.load_state(path)
+        assert state.ui_font_family is None
+        assert state.wheel_font_family is None
+        # 回退链：None 让调用方的选择生效，默认字符串则不会
+        assert (state.ui_font_family or "启动期字体") == "启动期字体"
+        # to_dict 不写键，避免把默认值固化成用户选择
+        assert "ui_font_family" not in state.to_dict()
+        assert "wheel_font_family" not in state.to_dict()
+
+    def test_legacy_font_family_still_splits(self):
+        """旧 font_family 仍同时供 ui 与 wheel 两份使用。"""
+        state, _ = storage.parse_state(
+            {"groups": [{"name": "g", "items": ["a"]}], "font_family": "旧字体"}
+        )
+        assert state.ui_font_family == "旧字体"
+        assert state.wheel_font_family == "旧字体"
+
+    def test_non_string_font_family_falls_back(self):
+        """显式记录但类型非法的字体家族回落默认值（None 不受此限）。"""
+        data = {"groups": [{"name": "g", "items": ["a"]}], "ui_font_family": 42}
+        state, _ = storage.parse_state(data)
+        assert state.ui_font_family == "Microsoft YaHei"
+
     def test_corrupt_file_is_quarantined_not_overwritten(self, tmp_path):
         """损坏文件改名保留为 .corrupt-<时间戳>，原位启用默认数据。"""
         path = tmp_path / "wheel_data.json"

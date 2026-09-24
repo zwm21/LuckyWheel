@@ -89,22 +89,25 @@ def relocate_data_file(old_path, new_path):
         return False
 
 
-def font_candidates():
-    """内嵌字体的候选位置，按优先级返回（首个存在的被使用）。"""
+def font_candidates(font_filename=None):
+    """内嵌字体的候选位置，按优先级返回（首个存在的被使用）。
+
+    只收固定文件名，不 glob 目录下的任意 *.ttf/*.otf：字体解析是可被
+    恶意构造文件利用的攻击面，程序目录下的字体应只来自 assets/fonts/ 与
+    随包分发这两处（.gitignore 对两者都不放行，见 assets/fonts/README.md）。
+    """
+    name = font_filename or FONT_FILE_NAME
     frozen_base = getattr(sys, "_MEIPASS", None)
     bases = [
-        Path(__file__).resolve().parents[2] / "assets" / "fonts",  # 源码：仓库 assets
+        # PyInstaller 解包目录（build_exe.py 用 --add-data 把字体放在这里）
+        Path(frozen_base) if frozen_base else None,
+        # 源码运行：仓库根的 assets/fonts。parents: core, luckywheel, src, 仓库根
+        # （与 program_dir() 同一级，早先误写 parents[2] 指向 src/assets/fonts，
+        # 该目录不存在，导致此候选永远落空）
+        Path(__file__).resolve().parents[3] / "assets" / "fonts",
         program_dir(),  # exe/脚本旁边
     ]
-    if frozen_base:
-        bases.insert(0, Path(frozen_base))  # PyInstaller 解包目录
-    candidates = []
-    for base in bases:
-        candidates.append(Path(base) / FONT_FILE_NAME)
-        candidates.append(Path(base) / "HYWenHei-65W.ttf")
-        if Path(base).is_dir():
-            for pattern in ("*.ttf", "*.otf"):
-                candidates.extend(sorted(Path(base).glob(pattern)))
+    candidates = [base / name for base in bases if base is not None]
     # 去重保序
     seen, unique = set(), []
     for c in candidates:
@@ -115,9 +118,9 @@ def font_candidates():
     return unique
 
 
-def find_embedded_font():
+def find_embedded_font(font_filename=None):
     """返回首个存在的字体路径，没有则 None。"""
-    for candidate in font_candidates():
+    for candidate in font_candidates(font_filename):
         if candidate.is_file():
             return candidate
     return None
