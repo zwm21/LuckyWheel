@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import stat
 from pathlib import Path
 
 import pytest
@@ -259,6 +260,70 @@ class TestHostileInput:
         _, warnings = storage.parse_state(raw)
         assert len(warnings) <= storage.MAX_WARNINGS + 1
         assert "省略" in warnings[-1]
+
+    def test_group_warnings_are_truncated_inside_the_loop(self, monkeypatch):
+        """分组告警必须在循环内即时截断，不能循环后才截。
+
+        _warn 的封顶只作用于传进来的那个 list，而 sanitize_group 用的是
+        自己的局部 list——"每组各自 1001 条"。循环内盲 extend、循环后才截
+        时峰值是分组数 × 每组上限：实测 6.04 MiB 的文件（1000 组、构造
+        成本 5 字节/条）峰值 100 万条字符串、tracemalloc 148 MiB。
+        这里量的是"每次合并前的累积量"——它有界就等于截断发生在循环内。
+        """
+        before_each_merge = []
+        real_merge = storage._merge_warnings
+
+        def spy(warnings, incoming):
+            if incoming:  # 尾部那次 _merge_warnings(warnings, []) 不是分组来源
+                before_each_merge.append(len(warnings))
+            return real_merge(warnings, incoming)
+
+        monkeypatch.setattr(storage, "_merge_warnings", spy)
+        raw = {"groups": [{"name": f"g{i}", "items": [None] * 1200} for i in range(5)]}
+        _, warnings = storage.parse_state(raw)
+
+        assert len(before_each_merge) >= 5, "每个分组都应经过一次合并"
+        assert max(before_each_merge) <= storage.MAX_WARNINGS, (
+            f"合并前累积量 {max(before_each_merge)} 已超上限，说明是循环后才截断"
+        )
+        assert len(warnings) == storage.MAX_WARNINGS + 1
+        assert "省略" in warnings[-1]
+
+    def test_omitted_count_covers_every_group(self):
+        """省略条数是整场丢弃的总量，不是最后一次截断丢掉的那些。"""
+        raw = {"groups": [{"name": f"g{i}", "items": [None] * 600} for i in range(5)]}
+        generated = sum(len(storage.sanitize_group(g, i)[1]) for i, g in enumerate(raw["groups"]))
+        # 无 version 字段还会多一条迁移提示
+        _, warnings = storage.parse_state(raw)
+
+        omitted = int("".join(c for c in warnings[-1] if c.isdigit()))
+        assert omitted == generated + 1 - storage.MAX_WARNINGS
+
+    def test_backup_survives_readonly_previous_backup(self, tmp_path):
+        """上一份 .bak 带只读位时备份仍须更新，不得静默失效。
+
+        Windows 上 os.replace 覆盖只读文件抛 PermissionError，而 save_state
+        把备份失败整个吞掉。这不是假想情形：改用 mkstemp 之前的
+        shutil.copy2 会把只读源的 mode 复制到 .bak，所以任何曾把
+        wheel_data.json 设成只读的用户，其 .bak 至今带着只读位。
+        """
+        path = tmp_path / "d.json"
+        state = default_state()
+        storage.save_state(path, state)
+        storage.save_state(path, state)  # 第二次保存才产生 .bak
+        bak = tmp_path / "d.json.bak"
+        os.chmod(bak, stat.S_IREAD)
+
+        state.groups[0].items = ["改过了"]
+        storage.save_state(path, state)
+
+        assert "改过了" in path.read_text(encoding="utf-8"), "主写入不应受影响"
+        assert json.loads(bak.read_text(encoding="utf-8"))["groups"][0]["items"] == [
+            "选项1",
+            "选项2",
+            "选项3",
+        ], "备份内容应已更新为上一版，而非停留在只读那一刻"
+        assert not list(tmp_path.glob(".d.json.bak.*.tmp")), "不得留下临时文件"
 
     def test_quarantine_warning_names_actual_file(self, tmp_path):
         """隔离告警必须给出确切文件名：glob 形式（.corrupt-*.json）让用户

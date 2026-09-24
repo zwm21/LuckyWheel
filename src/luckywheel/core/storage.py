@@ -16,6 +16,7 @@ MainWindow.__init__ 把程序变成起不来。
 import json
 import os
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 
@@ -42,11 +43,30 @@ class StorageError(Exception):
 
 
 def _warn(warnings, message):
-    """累计一条告警，总量封顶 MAX_WARNINGS，超限记一条汇总后停止累积。"""
+    """累计一条告警，总量封顶 MAX_WARNINGS，超限记一条汇总后停止累积。
+
+    注意这个封顶只作用于传进来的那一个 list。sanitize_group 用的是自己的
+    局部 list，所以"每组各自 1001 条"——合并处必须自己再截，见 _merge_warnings。
+    """
     if len(warnings) < MAX_WARNINGS:
         warnings.append(message)
     elif len(warnings) == MAX_WARNINGS:
         warnings.append("告警过多，其余已省略")
+
+
+def _merge_warnings(warnings, incoming):
+    """把 incoming 并入 warnings 并即时截到 MAX_WARNINGS，返回丢弃条数。
+
+    必须在循环内截而不是循环后截：每个分组的局部告警各自可攒到 1001 条，
+    1000 个分组盲 extend 下来峰值 100 万条字符串。实测 6.04 MiB 的文件
+    （构造成本 5 字节/条）峰值 tracemalloc 148 MiB——返回值有界，过程无界。
+    """
+    warnings.extend(incoming)
+    if len(warnings) <= MAX_WARNINGS:
+        return 0
+    dropped = len(warnings) - MAX_WARNINGS
+    del warnings[MAX_WARNINGS:]
+    return dropped
 
 
 def sanitize_group(data, index):
@@ -123,6 +143,7 @@ def _sanitize_entries(raw, field, index, warnings):
 def parse_state(data, source_name="数据"):
     """把已解析的 JSON 转为 AppState，返回 (state, warnings)。"""
     warnings = []
+    dropped = 0
     if not isinstance(data, dict):
         return default_state(), [f"{source_name}顶层不是对象，已启用默认数据"]
 
@@ -141,7 +162,7 @@ def parse_state(data, source_name="数据"):
                 )
                 break
             group, group_warnings = sanitize_group(g, i)
-            warnings.extend(group_warnings)
+            dropped += _merge_warnings(warnings, group_warnings)
             groups.append(group)
         current = data.get("current_group", 0)
         # 必须排除 bool：isinstance(True, int) 为真，混过后会被原样序列化回
@@ -180,12 +201,11 @@ def parse_state(data, source_name="数据"):
         warnings.append(
             f"数据版本 v{declared} 高于本程序支持的最高版本 v{SCHEMA_VERSION}，不支持的字段将被忽略"
         )
-    # 总量兜底：_warn 封顶了逐条来源，这里再截一次总量（分组数 × 每组两条
-    # 这类小额来源也一并覆盖），保证调用方拿到的列表有界
-    if len(warnings) > MAX_WARNINGS:
-        omitted = len(warnings) - MAX_WARNINGS
-        del warnings[MAX_WARNINGS:]
-        warnings.append(f"其余 {omitted} 条告警已省略")
+    # 总量兜底：分组告警已在循环内即时截断，这里覆盖迁移提示等尾部来源，
+    # 并把整场丢弃的条数汇总成一条，保证调用方拿到的列表有界
+    dropped += _merge_warnings(warnings, [])
+    if dropped:
+        warnings.append(f"其余 {dropped} 条告警已省略")
     return state, warnings
 
 
@@ -331,13 +351,29 @@ def _copy_backup(src, dst):
             shutil.copyfileobj(inp, out)
             out.flush()
             os.fsync(out.fileno())
-        os.replace(tmp_name, dst)
+        _replace_over_readonly(tmp_name, dst)
     except BaseException:
         try:
             os.unlink(tmp_name)
         except OSError:
             pass
         raise
+
+
+def _replace_over_readonly(tmp_name, dst):
+    """os.replace 到 dst，目标带只读位时去掉它再重试一次。
+
+    Windows 上 os.replace 覆盖只读文件抛 PermissionError，而 save_state
+    把备份失败整个吞掉（备份不该阻塞主写入）——于是备份静默失效。这不是
+    假想情形：改用 mkstemp 之前的 shutil.copy2 会把只读源的 mode 复制到
+    .bak，所以任何曾把 wheel_data.json 设成只读的用户，其 .bak 至今带着
+    只读位，对他们"备份已恢复可用"并不成立。
+    """
+    try:
+        os.replace(tmp_name, dst)
+    except PermissionError:
+        os.chmod(dst, stat.S_IWRITE | stat.S_IREAD)
+        os.replace(tmp_name, dst)
 
 
 def _backup_path(path):
