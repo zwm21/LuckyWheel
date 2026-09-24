@@ -213,6 +213,21 @@ class TestHostileInput:
         assert len(warnings) == 1, "超限只应有一条汇总提示"
         assert str(storage.MAX_ENTRIES_PER_GROUP) in warnings[0]
 
+    def test_entry_cap_counts_read_positions_not_kept_items(self, monkeypatch):
+        """上限按已读位置计，不按已保留条数。
+
+        用 len(cleaned) 计数时，一组全是 null 的条目永远触不到上限
+        （cleaned 恒为 0），恰是构造成本最低的输入（每条 5 字节）拿到了
+        唯一不受限的遍历；8 MiB 内可塞约 140 万条。
+        """
+        monkeypatch.setattr(storage, "MAX_ENTRIES_PER_GROUP", 5)
+        warnings = []
+        cleaned = storage._sanitize_entries([None] * 20, "items", 0, warnings)
+        assert cleaned == []
+        assert any("超过 5 条" in w for w in warnings), "全部非法的条目列表也必须在上限处停下"
+        # 上限之后的位置不再产生逐项告警
+        assert sum("类型非法" in w for w in warnings) == 5
+
     def test_overlong_text_truncated(self):
         warnings = []
         raw = ["x" * (storage.MAX_TEXT_LENGTH + 10)]
@@ -253,6 +268,62 @@ class TestHostileInput:
         _, warnings = storage.load_state(path)
         kept = list(tmp_path.glob("*.corrupt-*.json"))[0].name
         assert any(kept in w for w in warnings)
+
+    def test_lone_surrogate_does_not_break_saving(self, tmp_path):
+        """孤立代理字符必须在载入边界被换掉，否则保存永久失败。
+
+        JSON 里的 "\\ud800" 字面量是纯 ASCII 字节，json.loads 给出合法
+        str，一路通过类型校验进入 AppState；写盘时 encode("utf-8") 抛
+        UnicodeEncodeError（ValueError 子类，不被 except OSError 接住），
+        于是每次保存都失败、关窗的 flushSave 也失败，整场会话的改动
+        无声丢失（_write_state 的宽 except 只保证不崩，不保证存下来）。
+        """
+        path = tmp_path / "wheel_data.json"
+        path.write_text(
+            '{"version": 2, "groups": [{"name": "\\ud800组", "items": ["\\ud800ok", "正常"]}]}',
+            encoding="utf-8",
+        )
+        state, warnings = storage.load_state(path)
+
+        assert any("无法保存的字符" in w for w in warnings)
+        assert state.groups[0].items[1] == "正常", "同组的正常条目不受影响"
+        # 关键断言：存得下去，且往返闭合
+        out = tmp_path / "out.json"
+        storage.save_state(out, state)
+        reloaded, _ = storage.load_state(out)
+        assert reloaded.groups[0].items == state.groups[0].items
+        assert reloaded.groups[0].name == state.groups[0].name
+
+    def test_unencodable_state_raises_storage_error(self, tmp_path):
+        """内存里的状态若仍含无法编码的字符，必须归入 StorageError 契约。
+
+        save_state 的文档承诺失败以 StorageError 呈现；UnicodeEncodeError
+        直接穿透会让调用方的 except StorageError 落空，且不得在数据目录
+        留下临时文件。
+        """
+        state = default_state()
+        state.groups[0].items = ["\ud800"]
+        with pytest.raises(storage.StorageError):
+            storage.save_state(tmp_path / "d.json", state)
+        assert list(tmp_path.iterdir()) == [], "失败不得留下临时文件或半截数据"
+
+    def test_saved_file_size_matches_payload(self, tmp_path):
+        """落盘字节数必须等于 payload 字节数（不得有换行翻译带来的膨胀）。
+
+        文本模式在 Windows 下把每个 LF 写成 CRLF，而 indent=2 是一个条目
+        一行：于是"体积检查刚好通过"的数据存回去就越过
+        MAX_DATA_FILE_BYTES，下次启动被整份隔离，真实数据只剩在
+        load_state 从不读的 .bak 里。
+        """
+        state = default_state()
+        state.groups[0].items = [f"条目{n}" for n in range(500)]
+        payload = json.dumps(state.to_dict(), ensure_ascii=False, indent=2)
+        path = tmp_path / "d.json"
+        storage.save_state(path, state)
+
+        assert payload.count("\n") > 500, "indent=2 应产生大量换行，否则本测试失去意义"
+        assert path.stat().st_size == len(payload.encode("utf-8"))
+        assert b"\r\n" not in path.read_bytes()
 
     def test_backup_never_removes_original(self, tmp_path, monkeypatch):
         """备份用复制而非改名：最后一步失败时原文件必须还在原地。

@@ -59,10 +59,30 @@ def sanitize_group(data, index):
     if not isinstance(name, str) or not name.strip():
         name = f"分组{index + 1}"
         _warn(warnings, f"第 {index + 1} 个分组名非法，已设为 {name}")
+    name, repaired = _repair_text(name.strip())
+    if repaired:
+        _warn(warnings, f"第 {index + 1} 个分组名含无法保存的字符，已替换")
 
     items = _sanitize_entries(data.get("items"), "items", index, warnings)
     drawn = _sanitize_entries(data.get("drawn_items", data.get("drawn")), "drawn", index, warnings)
-    return Group(name=name.strip(), items=items, drawn=drawn), warnings
+    return Group(name=name, items=items, drawn=drawn), warnings
+
+
+def _repair_text(text):
+    """把无法编码为 UTF-8 的字符替换为 U+FFFD，返回 (文本, 是否改动过)。
+
+    JSON 里的 "\\ud800" 是孤立代理：字面量本身是纯 ASCII 字节，json.loads
+    照单接受并给出一个合法 str，于是它一路通过类型校验进入 AppState。但
+    写盘时 str.encode("utf-8") 抛 UnicodeEncodeError——那是 ValueError
+    子类，不被 save_state 的 except OSError 接住，此后每次保存都失败，
+    关窗时的 flushSave 也一样，整场会话的改动无声丢失。在载入边界换掉，
+    数据内容就无法击穿写盘侧的契约。
+    """
+    try:
+        text.encode("utf-8")
+        return text, False
+    except UnicodeEncodeError:
+        return text.encode("utf-8", "replace").decode("utf-8"), True
 
 
 def _sanitize_entries(raw, field, index, warnings):
@@ -72,7 +92,10 @@ def _sanitize_entries(raw, field, index, warnings):
         return []
     cleaned = []
     for pos, item in enumerate(raw):
-        if len(cleaned) >= MAX_ENTRIES_PER_GROUP:
+        # 按已读位置计数而非已保留条数：用 len(cleaned) 时一组 140 万个
+        # null 永远触不到上限（cleaned 恒为 0），恰是构造成本最低的输入
+        # 拿到了唯一不受限的遍历。
+        if pos >= MAX_ENTRIES_PER_GROUP:
             _warn(
                 warnings,
                 f"分组 {index + 1} 的 {field} 超过 {MAX_ENTRIES_PER_GROUP} 条，"
@@ -80,6 +103,9 @@ def _sanitize_entries(raw, field, index, warnings):
             )
             break
         if isinstance(item, str):
+            item, repaired = _repair_text(item)
+            if repaired:
+                _warn(warnings, f"分组 {index + 1} 的 {field}[{pos}] 含无法保存的字符，已替换")
             # 超长条目截断：转盘上一个扇区放不下几千字，留着只会让字号求解
             # 每次都对同一段长文本做二分
             if len(item) > MAX_TEXT_LENGTH:
@@ -253,16 +279,25 @@ def save_state(path, state):
     或紧接着的第二步失败，目标路径就不存在了，而 load_state 从不读 .bak，
     用户看到的是"数据被清空"而非"上一次的数据"。复制的代价是同一份数据
     在磁盘上短暂存在两份，换取的是任何一步失败时原文件都还在原地。
+
+    落盘走二进制而非文本模式：文本模式在 Windows 下把 json.dumps(indent=2)
+    的每个 LF 翻成 CRLF，一个条目一行即一字节，于是"刚好能加载"的数据
+    存回去就越过 MAX_DATA_FILE_BYTES，下次启动被整份隔离；自己 encode
+    还能把 UnicodeEncodeError 拦在建立临时文件之前（见 _repair_text）。
     """
     path = Path(path)
     payload = json.dumps(state.to_dict(), ensure_ascii=False, indent=2)
+    try:
+        data = payload.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise StorageError(f"数据含无法编码为 UTF-8 的字符（{exc.reason}）") from exc
     directory = path.parent if str(path.parent) else Path(".")
     try:
         directory.mkdir(parents=True, exist_ok=True)
         fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(directory))
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(payload)
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
                 f.flush()
                 os.fsync(f.fileno())
             if path.exists():
