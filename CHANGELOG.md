@@ -6,6 +6,11 @@
 ## [未发布]
 
 ### 新增
+- 单次抽取的「停止」按钮（位于「抽出」与「开始旋转」之间）：旋转途中可
+  手动中止，转盘停在当前角度不归位，且不产生中奖结果。与不放回批量抽取
+  的「停止」互不接管——两者按 `batch_remaining` 区分模式，同一时刻只有
+  一个可用。停止后显式清空 `last_result_index`，否则上一轮的中奖下标会
+  残留，「抽出」会指向与当前指针无关的项目。
 - `python -m luckywheel` 入口（`python main.py` 旧入口保留为兼容 wrapper）。
 - `scripts/build_exe.py`：字体可选打包，不再要求仓库内置字体；GitHub Release
   自动构建（`.github/workflows/release.yml`）。

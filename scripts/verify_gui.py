@@ -136,6 +136,27 @@ def verify(window, app):
     check("旋转到停止并显示结果", single_spin, failures)
     shot("after_spin.png")
 
+    print("== 单次停止 ==")
+
+    def single_stop():
+        items = window.groups[window.current_group_index]["items"]
+        window.wheel.setItems(items or ["A", "B", "C"])
+        window.wheel.speed_scale = 1.0  # 不加速，才有机会在动画中途按停止
+        window.wheel.startSpin()
+        require(wait(lambda: window.wheel.rotation > 0.0, 2.0, app=app), "转盘未开始转动")
+        require(window.btn_stop_single.isEnabled(), "旋转中停止按钮应可用")
+        frozen = window.wheel.rotation
+        window.btn_stop_single.click()
+        app.processEvents()
+        require(not window.wheel.spinning, "停止后仍在旋转")
+        require(window.wheel.rotation == frozen, f"转盘归位了：{frozen} -> {window.wheel.rotation}")
+        require(window.last_result_index is None, "停止不应留下中奖索引")
+        require(not window.btn_stop_single.isEnabled(), "停止后按钮应禁用")
+        require(window.btn_spin.isEnabled(), "停止后开始旋转应恢复可用")
+
+    check("单次旋转中途停止且转盘停在原地", single_stop, failures)
+    shot("after_stop.png")
+
     print("== 批量抽取 ==")
 
     def batch_spin():

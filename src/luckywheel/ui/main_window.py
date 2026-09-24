@@ -125,6 +125,9 @@ class MainWindow(QMainWindow):
     def stopBatchSpin(self):
         self.spin_panel.stopBatchSpin()
 
+    def stopSingleSpin(self):
+        self.spin_panel.stopSingleSpin()
+
     def onSpinFinished(self, index, text):
         self.spin_panel.onSpinFinished(index, text)
 
@@ -290,6 +293,7 @@ class MainWindow(QMainWindow):
         self.batch_spinbox = self.spin_panel.batch_spinbox
         self.btn_spin = self.spin_panel.btn_spin
         self.btn_extract = self.spin_panel.btn_extract
+        self.btn_stop_single = self.spin_panel.btn_stop_single
         self.btn_batch_spin = self.spin_panel.btn_batch_spin
         self.btn_stop_batch = self.spin_panel.btn_stop_batch
         self.wheel.spinStarted.connect(self.spin_panel.onSpinStarted)

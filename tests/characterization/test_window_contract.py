@@ -38,6 +38,7 @@ CONTRACT_ATTRIBUTES = (
     "result_label",
     "batch_spinbox",
     "btn_stop_batch",
+    "btn_stop_single",
     "batch_remaining",
     "theme_combo",
     "batch_frame",
@@ -51,6 +52,7 @@ CONTRACT_ATTRIBUTES = (
 CONTRACT_METHODS = (
     "startBatchSpin",
     "stopBatchSpin",
+    "stopSingleSpin",
     "flushSave",
     "saveData",
     "loadData",

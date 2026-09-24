@@ -62,6 +62,13 @@ class SpinPanel(Panel):
         self.btn_extract.clicked.connect(window.drawn_panel.extractDrawnItem)
         spin_layout.addWidget(self.btn_extract)
 
+        self.btn_stop_single = QPushButton("停止")
+        self.btn_stop_single.setFixedHeight(38)
+        self.btn_stop_single.setMaximumWidth(72)
+        self.btn_stop_single.setEnabled(False)
+        self.btn_stop_single.clicked.connect(self.stopSingleSpin)
+        spin_layout.addWidget(self.btn_stop_single)
+
         self.btn_spin = QPushButton("开始旋转")
         self.btn_spin.setMinimumHeight(38)
         self.btn_spin.setStyleSheet("background-color: #FF6B6B; color: white; font-weight: bold;")
@@ -142,6 +149,17 @@ class SpinPanel(Panel):
         self.btn_extract.setEnabled(False)
         if self.batch_remaining <= 0:
             self.btn_batch_spin.setEnabled(False)
+            # 批量模式由 btn_stop_batch 接管停止，两个停止按钮不同时可用：
+            # startBatchSpin 在 startSpin 之前就把 batch_remaining 置为 n。
+            self.btn_stop_single.setEnabled(True)
+
+    def _restoreSingleIdle(self):
+        """单次抽取结束或被停止后恢复空闲态。"""
+        self.window.left_panel.setEnabled(True)
+        self.btn_spin.setEnabled(True)
+        self.btn_stop_single.setEnabled(False)
+        self.btn_batch_spin.setEnabled(True)
+        self.updateExtractButtonState()
 
     def onSpinFinished(self, index, text):
         """旋转结束时显示结果并恢复编辑"""
@@ -173,10 +191,21 @@ class SpinPanel(Panel):
             return
 
         # 单次抽取模式：恢复正常状态
-        self.window.left_panel.setEnabled(True)
-        self.btn_spin.setEnabled(True)
-        self.btn_batch_spin.setEnabled(True)
-        self.updateExtractButtonState()
+        self._restoreSingleIdle()
+
+    def stopSingleSpin(self):
+        """手动停止单次旋转：转盘停在当前角度，不产生中奖结果。
+
+        wheel.stopSpin() 不碰 self.rotation，所以停下即停在原地。也因此
+        没有 spinFinished，last_result_index 要显式清空——否则上一轮的
+        中奖下标会残留，抽出按钮会指向与当前指针无关的项目。
+        """
+        if self.batch_remaining > 0:
+            return
+        self.window.wheel.stopSpin()
+        self.window.last_result_index = None
+        self.result_label.setText("🛑 已停止，转盘停在原地")
+        self._restoreSingleIdle()
 
     # ---- 批量抽取（不放回）----
     def startBatchSpin(self):
