@@ -1,5 +1,6 @@
 """core.paths：数据文件定位与字体查找（零 Qt 依赖）。"""
 
+import os
 import sys
 from pathlib import Path
 
@@ -93,6 +94,33 @@ class TestFontCandidates:
         # 按路径分量匹配而非子串：tmp_path 的目录名由测试名生成，可能含 assets
         assert not any(Path("assets") in c.parts for c in cands)
         assert cands[-1] == program_dir() / paths.FONT_FILE_NAME
+
+    def test_frozen_without_meipass_also_skips_repo_assets(self, monkeypatch, tmp_path):
+        """cx_Freeze / py2exe 只设 sys.frozen，不设 sys._MEIPASS。
+
+        判据若只看 _MEIPASS，这两种打包器下"frozen 但无 _MEIPASS"，仓库根
+        候选会从毫无意义的 parents[3] 复活、且仍排在 program_dir() 之前，
+        劫持面换个打包器就重新敞开。
+        """
+        monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(tmp_path / "LuckyWheel.exe"))
+        cands = font_candidates()
+        assert cands == [tmp_path / paths.FONT_FILE_NAME]
+
+    def test_dedup_follows_filesystem_case_rules(self, monkeypatch, tmp_path):
+        """去重键用 os.path.normcase：大小写敏感的文件系统上不折叠大小写。
+
+        早先的 str().lower() 在 Linux/macOS（区分大小写）上会把 Fonts/ 与
+        fonts/ 这类真正不同的目录当成同一个候选丢掉。
+        """
+        monkeypatch.setattr(paths, "program_dir", lambda: tmp_path / "Bin")
+        lower = tmp_path / "bin"
+        monkeypatch.setattr(sys, "_MEIPASS", str(lower), raising=False)
+
+        cands = font_candidates()
+        folded = os.path.normcase(str(lower)) == os.path.normcase(str(tmp_path / "Bin"))
+        assert len(cands) == (1 if folded else 2)
 
     def test_find_embedded_font_none_or_file(self):
         found = find_embedded_font()

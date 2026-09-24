@@ -170,9 +170,21 @@ class TestAppState:
         assert clamp_with(drawn_list_height=None).drawn_list_height == 120
 
     def test_clamp_bad_font_family(self):
-        """字体家族会直接传给 QFont()，非字符串必须收敛。"""
-        assert clamp_with(ui_font_family=42).ui_font_family == "Microsoft YaHei"
-        assert clamp_with(wheel_font_family=["a"]).wheel_font_family == "Microsoft YaHei"
+        """字体家族会直接传给 QFont()，非字符串必须收敛。
+
+        必须收敛成 None 而不是默认家族：None 才让 MainWindow.loadData 的
+        `state.x or self.x` 回退把启动期选中的内嵌字体填回来；填了默认值就
+        绕过回退，还会被随后的自动保存固化。
+        """
+        assert clamp_with(ui_font_family=42).ui_font_family is None
+        assert clamp_with(wheel_font_family=["a"]).wheel_font_family is None
+
+    def test_bad_font_family_is_not_persisted(self):
+        """类型非法的字体家族不写回文件，下次启动回退链照旧生效。"""
+        state = clamp_with(ui_font_family=42, wheel_font_family=42)
+        data = state.to_dict()
+        assert "ui_font_family" not in data
+        assert "wheel_font_family" not in data
 
     def test_default_state_has_one_group(self):
         state = default_state()

@@ -19,9 +19,21 @@ DATA_FILE_NAME = "wheel_data.json"
 FONT_FILE_NAME = "HYWenHei-65W.ttf"
 
 
+def is_frozen():
+    """是否运行在打包后的可执行文件里。
+
+    两个判据都要看：PyInstaller 同时设置 sys.frozen 与 sys._MEIPASS，但
+    cx_Freeze / py2exe 只设 sys.frozen。早先 program_dir() 看 frozen、
+    font_candidates() 看 _MEIPASS，于是在后两种打包器下"frozen 但无
+    _MEIPASS"，仓库根候选会从毫无意义的 parents[3] 复活且仍排在
+    program_dir() 之前——正是 6291c2d 要封掉的那个劫持面换了个打包器。
+    """
+    return bool(getattr(sys, "frozen", False)) or getattr(sys, "_MEIPASS", None) is not None
+
+
 def program_dir():
     """程序所在目录：frozen 时是 exe 目录，源码运行时是本包上两级（仓库根）。"""
-    if getattr(sys, "frozen", False):
+    if is_frozen():
         return Path(sys.executable).resolve().parent
     # src/luckywheel/core/paths.py → 仓库根（parents: core, luckywheel, src, 根）
     return Path(__file__).resolve().parents[3]
@@ -106,15 +118,18 @@ def font_candidates(font_filename=None):
         # 该目录不存在，导致此候选永远落空）。仅非 frozen 加入：onefile 下
         # __file__ 位于 %TEMP%\_MEIxxxxxx 内，parents[3] 会指向 %TEMP%——那是
         # 任何用户态程序都可写的目录，而该候选又排在 program_dir() 之前，
-        # 预置同名 ttf 即可劫持字体加载。
-        (Path(__file__).resolve().parents[3] / "assets" / "fonts") if not frozen_base else None,
+        # 预置同名 ttf 即可劫持字体加载。判据用 is_frozen() 而非 _MEIPASS，
+        # 否则 cx_Freeze 下同一个劫持面照旧敞开。
+        (Path(__file__).resolve().parents[3] / "assets" / "fonts") if not is_frozen() else None,
         program_dir(),  # exe/脚本旁边
     ]
     candidates = [base / name for base in bases if base is not None]
-    # 去重保序
+    # 去重保序。键用 os.path.normcase：Windows 上折叠大小写与斜杠方向，
+    # 而在大小写敏感的文件系统上是恒等映射——早先的 str().lower() 会把
+    # Font.ttf 与 font.ttf 这类真正不同的路径当成同一个候选丢掉。
     seen, unique = set(), []
     for c in candidates:
-        key = str(c).lower()
+        key = os.path.normcase(str(c))
         if key not in seen:
             seen.add(key)
             unique.append(c)

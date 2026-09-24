@@ -107,14 +107,15 @@ class AppState:
             self.current_group = 0
         if self.theme not in THEMES:
             self.theme = "light"
-        # 字体家族直接进 QFont()，非字符串会 TypeError。None 是合法值，表示
-        # "数据文件未记录"，由调用方（MainWindow.loadData）用启动期
-        # loadEmbeddedFont 的选择回填；此处不得擅自填默认值，否则那个回退
-        # 永远不触发，源码运行与打包版字体不一致。
-        if self.ui_font_family is not None and not isinstance(self.ui_font_family, str):
-            self.ui_font_family = DEFAULT_UI_FONT
-        if self.wheel_font_family is not None and not isinstance(self.wheel_font_family, str):
-            self.wheel_font_family = DEFAULT_WHEEL_FONT
+        # 字体家族直接进 QFont()，非字符串会 TypeError。合法的"未记录"表示是
+        # None：由调用方（MainWindow.loadData）用启动期 loadEmbeddedFont 的
+        # 选择回填。类型非法时同样回落 None 而非默认家族——填了默认值那条回退
+        # 就永远不触发，还会被随后的自动保存固化成用户选择，源码运行与打包版
+        # 字体从此不一致（`"ui_font_family": 5` 曾因此拿到 Microsoft YaHei）。
+        if not isinstance(self.ui_font_family, str):
+            self.ui_font_family = None
+        if not isinstance(self.wheel_font_family, str):
+            self.wheel_font_family = None
         # isinstance(x, bool) 要先排除：bool 是 int 子类，True 会混过字号校验
         if not _is_int(self.ui_font_size) or not 1 <= self.ui_font_size <= MAX_FONT_SIZE:
             self.ui_font_size = 9

@@ -81,10 +81,14 @@ class TestLoad:
         assert state.wheel_font_family == "旧字体"
 
     def test_non_string_font_family_falls_back(self):
-        """显式记录但类型非法的字体家族回落默认值（None 不受此限）。"""
+        """显式记录但类型非法的字体家族回落 None，交给启动期的字体回退链。
+
+        回落成 "Microsoft YaHei" 会击穿 MainWindow.loadData 的
+        `state.x or self.x`：内嵌字体永不生效，还会被自动保存固化。
+        """
         data = {"groups": [{"name": "g", "items": ["a"]}], "ui_font_family": 42}
         state, _ = storage.parse_state(data)
-        assert state.ui_font_family == "Microsoft YaHei"
+        assert state.ui_font_family is None
 
     def test_corrupt_file_is_quarantined_not_overwritten(self, tmp_path):
         """损坏文件改名保留为 .corrupt-<时间戳>，原位启用默认数据。"""
