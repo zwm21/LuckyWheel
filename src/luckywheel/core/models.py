@@ -80,8 +80,9 @@ class AppState:
             "batch_spin_count": self.batch_spin_count,
             "theme": self.theme,
         }
-        # 字体家族为 None（数据文件未记录）时不写键，让下次读取继续走
-        # loadEmbeddedFont 的回退，而不是把某个默认值固化成用户选择
+        # 字体家族为 None（数据文件未记录）时不写键。这是 AppState 作为纯
+        # 数据模型的自我保护：调用方以 None 构造（表示"未记录"）时，不把
+        # 任何默认值固化成用户选择写盘；下次读取仍缺键，回退链得以保持。
         if self.ui_font_family is not None:
             data["ui_font_family"] = self.ui_font_family
         if self.wheel_font_family is not None:

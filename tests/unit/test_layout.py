@@ -168,3 +168,15 @@ class TestFontSizeCache:
         calls = measure.calls
         assert cache.fit("A", 60, 30, measure, namespace="F", start_px=20) == first
         assert measure.calls == calls, "同 namespace 同参数应命中"
+
+    def test_capacity_is_bounded(self, monkeypatch):
+        """容量封顶：键含可用宽高，批量抽取每轮条目数变化都产生新键，不淘汰
+        则整个批次（spinbox 上限近千次）单调增长。超限整体清空即可——求解
+        是纯函数，重建成本有界。
+        """
+        cache = FontSizeCache()
+        measure = Measurement()
+        monkeypatch.setattr(FontSizeCache, "MAX_ENTRIES", 4)
+        for i in range(10):
+            cache.fit(f"t{i}", 60, 30, measure, namespace="F", start_px=20)
+        assert len(cache) <= 4, "缓存条目数必须有上界"

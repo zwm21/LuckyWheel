@@ -84,7 +84,15 @@ class FontSizeCache:
     只按 text 缓存会串味。调用方传字体家族即可，不必在切换字体时记得清空
     ——批量抽取每轮都会换一次条目列表，若那时清缓存，剩余条目的字号得全部
     重新二分，而它们的文本与字体都没变。
+
+    容量上限 MAX_ENTRIES：键含可用宽高，批量抽取每轮条目数变化都会产生
+    全新一批键，不淘汰则整个批次期间（spinbox 上限近千次）单调增长，
+    切换字体家族也会把旧家族的求解结果永久留下。正常一屏几百个唯一文本，
+    4096 足够覆盖任何合理场景；超限整体清空，代价是同样的文本再二分一遍
+    （求解是纯函数，成本有界），换来内存占用恒定。
     """
+
+    MAX_ENTRIES = 4096
 
     def __init__(self):
         self._cache = {}
@@ -92,6 +100,8 @@ class FontSizeCache:
     def fit(self, text, max_w, max_h, measure, namespace="", start_px=None, min_px=FONT_MIN_PX):
         key = (namespace, text, round(max_w, 3), round(max_h, 3), start_px, min_px)
         if key not in self._cache:
+            if len(self._cache) >= self.MAX_ENTRIES:
+                self._cache.clear()
             self._cache[key] = fit_font_size(
                 text, max_w, max_h, measure, start_px=start_px, min_px=min_px
             )

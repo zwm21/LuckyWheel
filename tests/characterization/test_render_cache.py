@@ -395,9 +395,10 @@ class TestCacheGuardOnResize:
     def test_paint_stretches_old_cache_during_debounce(self, qtbot, monkeypatch):
         """去抖窗口内 paintEvent 拉伸旧缓存兜底，不触发重建。
 
-        旧 500 边长缓存按 400/500 拉伸后半径恰为 400*0.44，与新边长直接
-        渲染同几何，故同时钉住「画满新尺寸」与「未触边」：若窗口内按原
-        尺寸绘制旧图，半径 500*0.44=220 会超出 400 画布的一半而被裁切。
+        旧 500 边长缓存按 400/500 拉伸后半径恰为 400*WHEEL_RADIUS_RATIO，
+        与新边长直接渲染同几何，故同时钉住「画满新尺寸」与「未触边」：若
+        窗口内按原尺寸绘制旧图，半径 500*WHEEL_RADIUS_RATIO=220 会超出
+        400 画布的一半而被裁切。
 
         wheel.grab() 会用 widget 背景色填满整幅画布，角点全不透明，无法
         用 alpha 分辨轮盘边界；改用 wheel.render() 画到自建透明 QImage 上

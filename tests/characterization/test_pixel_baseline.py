@@ -29,6 +29,7 @@ import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QPainter
 
+from luckywheel.core.layout import WHEEL_RADIUS_RATIO
 from luckywheel.ui.wheel import WheelWidget
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -36,7 +37,9 @@ BASELINE_PNG = DATA_DIR / "wheel_baseline.png"
 BASELINE_META = DATA_DIR / "wheel_baseline.json"
 
 SIDE = 400
-RADIUS_FRACTION = 0.44  # renderCache: wheel_diameter = side * 0.88
+# 与 renderCache 同一常量：改 layout 的半径比例时本基线随之更新，不会静默
+# 测旧几何（早先是写死的 0.44）
+RADIUS_FRACTION = WHEEL_RADIUS_RATIO
 # 高区分度配色：相邻项色相/明度差足够大，取样点落错扇区立刻可见
 COLOR_HEXES = [
     "#FF0000",

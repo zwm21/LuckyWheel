@@ -81,9 +81,9 @@ class WheelWidget(QWidget):
     def _invalidate_cache(self):
         """让离屏缓存失效，由下一次 paintEvent 按当前状态重建。
 
-        六个 setter 与 resize 去抖到点都走这里。三项必须一起清：paintEvent
-        的 guard 同时比对 pixmap、逻辑边长与 dpr，只清其中一两项会让旧图
-        被判为"仍然匹配"而继续使用。
+        五个 setter（字号/配色/阴影/字体/条目）与 resize 去抖到点共六处
+        调用都走这里。三项必须一起清：paintEvent 的 guard 同时比对 pixmap、
+        逻辑边长与 dpr，只清其中一两项会让旧图被判为"仍然匹配"而继续使用。
         """
         self.cached_pixmap = None
         self.cached_size = None
@@ -131,8 +131,7 @@ class WheelWidget(QWidget):
             return
 
         side = min(self.width(), self.height())
-        wheel_diameter = side * layout.WHEEL_DIAMETER_RATIO
-        radius = wheel_diameter / 2.0
+        radius = side * layout.WHEEL_RADIUS_RATIO
         center = QPointF(side / 2.0, side / 2.0)
 
         # 按 devicePixelRatio 放大画布，高 DPI 屏幕下不做插值放大。
@@ -465,7 +464,7 @@ class WheelWidget(QWidget):
         if self.spinning:
             return
         side = min(self.width(), self.height())
-        radius = side * layout.WHEEL_DIAMETER_RATIO / 2.0
+        radius = side * layout.WHEEL_RADIUS_RATIO
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
         click_pos = event.position()
         dist = math.hypot(click_pos.x() - center.x(), click_pos.y() - center.y())
