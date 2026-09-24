@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -229,26 +230,75 @@ class TestHostileInput:
         assert state.current_group == 0
         assert state.to_dict()["current_group"] == 0
 
+    def test_group_cap_truncates_with_warning(self):
+        """分组数超限截断：<8 MiB 可塞约 18 万个空分组，逐个进下拉框会拖死界面。"""
+        raw = {"groups": [{"name": f"g{i}", "items": []} for i in range(storage.MAX_GROUPS + 30)]}
+        state, warnings = storage.parse_state(raw)
+        assert len(state.groups) == storage.MAX_GROUPS
+        assert any(str(storage.MAX_GROUPS) in w for w in warnings)
+
+    def test_warnings_are_capped(self):
+        """告警总量封顶：8 MiB 内可塞约 140 万条 null，逐条累积的字符串
+        会常驻上百 MB，而展示侧本来就只预览前几条并说明总量。"""
+        raw = {"groups": [{"name": "g", "items": [None] * 3000}]}
+        _, warnings = storage.parse_state(raw)
+        assert len(warnings) <= storage.MAX_WARNINGS + 1
+        assert "省略" in warnings[-1]
+
+    def test_quarantine_warning_names_actual_file(self, tmp_path):
+        """隔离告警必须给出确切文件名：glob 形式（.corrupt-*.json）让用户
+        按名字找不到被搬走的文件。"""
+        path = tmp_path / "wheel_data.json"
+        path.write_text("not json", encoding="utf-8")
+        _, warnings = storage.load_state(path)
+        kept = list(tmp_path.glob("*.corrupt-*.json"))[0].name
+        assert any(kept in w for w in warnings)
+
     def test_backup_never_removes_original(self, tmp_path, monkeypatch):
         """备份用复制而非改名：最后一步失败时原文件必须还在原地。
 
         旧实现先 os.replace(path, .bak) 再 replace(tmp, path)，两步之间
         目标路径不存在，此刻失败就等于数据丢失，而 load_state 从不读 .bak。
+        现实现备份也走 tmp + replace：这里只让主替换失败，备份照常完成。
         """
         path = tmp_path / "d.json"
         storage.save_state(path, default_state())
         original = path.read_text(encoding="utf-8")
+        real_replace = os.replace
 
-        def boom(src, dst):
-            raise OSError("磁盘满了")
+        def main_replace_only_fails(src, dst):
+            if Path(dst) == path:
+                raise OSError("磁盘满了")
+            return real_replace(src, dst)
 
-        # 让 tmp → path 这步失败；copy2 走真实实现以留下 .bak
-        monkeypatch.setattr(os, "replace", boom)
+        monkeypatch.setattr(os, "replace", main_replace_only_fails)
         with pytest.raises(storage.StorageError):
             storage.save_state(path, default_state())
 
         assert path.read_text(encoding="utf-8") == original, "原文件被备份步骤挪走了"
         assert (tmp_path / "d.json.bak").exists()
+        assert not list(tmp_path.glob(".d.json.*.tmp")), "失败不得留下临时文件"
+
+    def test_failed_backup_keeps_previous_backup(self, tmp_path, monkeypatch):
+        """备份写 tmp 中途失败：上一份好 .bak 必须原样保留。
+
+        shutil.copy2 以 "wb" 直开目标的旧行为会留下半截 .bak，把上一份好
+        备份覆盖丢失；现实现先写临时文件再 replace，失败时旧 .bak 不动。
+        """
+        path = tmp_path / "d.json"
+        path.write_text("seed", encoding="utf-8")  # 已有数据文件，本次保存才会备份
+        storage.save_state(path, default_state())
+        good = (tmp_path / "d.json.bak").read_text(encoding="utf-8")
+        assert good == "seed"
+
+        def boom(*args):
+            raise OSError("磁盘满了")
+
+        monkeypatch.setattr(shutil, "copyfileobj", boom)
+        storage.save_state(path, default_state())  # 备份失败不阻塞主写入
+        assert path.exists(), "主写入不应被备份失败阻塞"
+        assert (tmp_path / "d.json.bak").read_text(encoding="utf-8") == good
+        assert not list(tmp_path.glob(".d.json.bak.*.tmp")), "失败不得留下临时文件"
 
 
 class TestSave:
