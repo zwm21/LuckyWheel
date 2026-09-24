@@ -154,9 +154,22 @@ def load_state(path):
                 f"数据文件超过 {MAX_DATA_FILE_BYTES // (1024 * 1024)} MiB 上限，"
                 f"已按损坏处理，原件保留为 {path.stem}.corrupt-*.json"
             ]
-        text = path.read_text(encoding="utf-8")
+        # utf-8-sig：记事本"UTF-8"选项另存的其实是带 BOM 的 UTF-8，而
+        # Python 的 json 不跳过前导 \ufeff——用 utf-8 会把这种合法文件判成
+        # 损坏并整份隔离搬家；utf-8-sig 对无 BOM 的 UTF-8 行为不变
+        text = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         return default_state(), []
+    except UnicodeDecodeError:
+        # 中文 Windows 记事本按默认 ANSI(GBK) 另存是常态，"另存为 UTF-16"
+        # 同理：UnicodeDecodeError 是 ValueError 子类而非 OSError，漏捕就
+        # 穿透 loadData 直达 MainWindow.__init__，程序起不来。按损坏同等
+        # 隔离：用户改个编码不会丢数据，也不至于开不了机。
+        quarantine(path)
+        return default_state(), [
+            f"数据文件不是 UTF-8 编码（记事本默认另存的 ANSI/GBK 无法读取），"
+            f"原件已保留为 {path.stem}.corrupt-*.json"
+        ]
     except OSError as exc:
         return default_state(), [f"读取失败（{exc}），已启用默认数据"]
 

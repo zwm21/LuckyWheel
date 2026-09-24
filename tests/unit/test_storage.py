@@ -157,6 +157,38 @@ class TestHostileInput:
         assert any("MiB" in w for w in warnings)
         assert not path.exists(), "超限文件应被隔离"
 
+    def test_gbk_encoded_file_does_not_escape(self, tmp_path):
+        """中文 Windows 记事本默认另存的 GBK 文件：UnicodeDecodeError 是
+        ValueError 子类而非 OSError，漏捕就穿透 loadData 直达
+        MainWindow.__init__，程序起不来。按损坏同等隔离，用户改个编码
+        不丢数据也不至于开不了机。
+        """
+        path = tmp_path / "wheel_data.json"
+        path.write_bytes(
+            json.dumps(
+                {"version": SCHEMA_VERSION, "groups": [{"name": "一组", "items": ["中文条目"]}]},
+                ensure_ascii=False,
+            ).encode("gbk")
+        )
+        state, warnings = storage.load_state(path)
+        assert state.groups[0].items == ["选项1", "选项2", "选项3"]
+        assert any("UTF-8" in w for w in warnings)
+        assert not path.exists(), "原件应被隔离保留而非静默覆盖"
+        assert len(list(tmp_path.glob("*.corrupt-*.json"))) == 1
+
+    def test_utf8_bom_file_is_accepted(self, tmp_path):
+        """记事本"UTF-8"选项另存的是带 BOM 的 UTF-8：json 不跳过前导
+        \\ufeff，用 utf-8 读取会把这种合法文件判成损坏并整份隔离搬家，
+        且没有恢复入口。utf-8-sig 对带/不带 BOM 的 UTF-8 都正确。
+        """
+        path = tmp_path / "wheel_data.json"
+        payload = json.dumps({"version": SCHEMA_VERSION, "groups": [{"name": "g", "items": ["a"]}]})
+        path.write_bytes(b"\xef\xbb\xbf" + payload.encode("utf-8"))
+        state, warnings = storage.load_state(path)
+        assert state.groups[0].items == ["a"]
+        assert not any("损坏" in w for w in warnings), "合法数据不得被判损坏"
+        assert path.exists(), "合法数据不得被隔离"
+
     def test_entry_cap_truncates_with_warning(self):
         """条目数超限截断而非全部拒绝，且只产生一条汇总 warning。"""
         raw = {"items": [str(i) for i in range(storage.MAX_ENTRIES_PER_GROUP + 50)]}
