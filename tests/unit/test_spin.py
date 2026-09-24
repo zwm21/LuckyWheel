@@ -6,6 +6,7 @@ import pytest
 
 from luckywheel.core.spin import (
     POINTER_ANGLE,
+    TAIL_RATIO,
     SpinPlan,
     eased_fraction,
     plan_spin,
@@ -44,6 +45,18 @@ class TestEasedFraction:
     def test_clamped_outside(self):
         assert eased_fraction(-1.0) == pytest.approx(0.0)
         assert eased_fraction(2.0) == pytest.approx(1.0)
+
+    def test_tail_slope_ratio(self):
+        """收尾瞬时速度占初速度的比例恰为 TAIL_RATIO（约 0.85%，视觉上已很慢）。
+
+        旧断言写在 SpinPlan.velocity_at 上，该方法生产无调用方已删除；同一
+        性质改在 eased_fraction 上验（角速度 = 转角 × 曲线斜率，比例与
+        total_rotation、duration 无关），不必另建一套角速度公式。
+        """
+        h = 1e-6
+        initial = (eased_fraction(h) - eased_fraction(0.0)) / h
+        final = (eased_fraction(1.0) - eased_fraction(1.0 - h)) / h
+        assert final / initial == pytest.approx(TAIL_RATIO, rel=1e-3)
 
 
 class TestPlanSpin:
@@ -124,12 +137,6 @@ class TestSpinPlanTimeline:
             while t < plan.duration:
                 t += dts[0]
             assert plan.rotation_at(t) == pytest.approx(plan.start_angle + plan.total_rotation)
-
-    def test_velocity_decreases(self):
-        plan = SpinPlan(winner_index=0, start_angle=0.0, total_rotation=1800.0, duration=7.0)
-        assert plan.velocity_at(0.0) > plan.velocity_at(plan.duration / 2)
-        assert plan.velocity_at(plan.duration / 2) > plan.velocity_at(plan.duration)
-        assert plan.velocity_at(plan.duration) < 15.0  # 收尾很慢
 
     def test_duration_in_legacy_range(self):
         """时长与旧实现同一量级（旧版 5.1~7.1 秒）。"""

@@ -37,6 +37,10 @@ class Group:
 
     @classmethod
     def from_dict(cls, data):
+        """从 dict 构造。UI 层的 groups 全程以 dict 形态持有（面板直接按
+        "items"/"drawn_items" 读写），落盘时由这里转回 Group——这是两套
+        表示之间的桥，不是可删的死代码。
+        """
         return cls(
             name=data.get("name", DEFAULT_GROUP_NAME),
             items=list(data.get("items", [])),
@@ -63,12 +67,6 @@ class AppState:
     theme: str = "light"
     version: int = SCHEMA_VERSION
 
-    @property
-    def current_group_object(self):
-        if 0 <= self.current_group < len(self.groups):
-            return self.groups[self.current_group]
-        return None
-
     def to_dict(self):
         data = {
             "version": self.version,
@@ -93,30 +91,6 @@ class AppState:
         if self.splitter_sizes is not None:
             data["splitter_sizes"] = list(self.splitter_sizes)
         return data
-
-    @classmethod
-    def from_dict(cls, data):
-        groups = [Group.from_dict(g) for g in data.get("groups", [])]
-        # 旧格式的 font_family 字段：ui 与转盘字体曾共用
-        legacy_font = data.get("font_family")
-        state = cls(
-            groups=groups,
-            current_group=data.get("current_group", 0),
-            ui_font_family=data.get("ui_font_family", legacy_font or DEFAULT_UI_FONT),
-            ui_font_size=data.get("ui_font_size", 9),
-            wheel_font_family=data.get("wheel_font_family", legacy_font or DEFAULT_WHEEL_FONT),
-            wheel_font_size=data.get("wheel_font_size", 0),
-            shadow_enabled=data.get("shadow_enabled", True),
-            window_geometry=data.get("window_geometry"),
-            splitter_sizes=data.get("splitter_sizes"),
-            list_height=data.get("list_height", 200),
-            drawn_list_height=data.get("drawn_list_height", 120),
-            batch_spin_count=data.get("batch_spin_count", 3),
-            theme=data.get("theme", "light"),
-            version=data.get("version", SCHEMA_VERSION),
-        )
-        state.clamp()
-        return state
 
     def clamp(self):
         """把引用外部数据后的取值收敛到合法范围。

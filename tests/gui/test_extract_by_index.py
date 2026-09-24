@@ -18,19 +18,11 @@ def rotation_pointing_at(index, count):
 
 
 @pytest.fixture
-def window(qtbot, monkeypatch, tmp_path):
+def window(build_main_window):
     """装配好 ["A", "A", "B"] 的 MainWindow，数据文件隔离到临时目录。"""
-    from luckywheel.ui.main_window import MainWindow
-
-    monkeypatch.setattr(
-        "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)
+    return build_main_window(
+        groups=[{"name": "g", "items": ["A", "A", "B"], "drawn_items": []}], refresh=True
     )
-    win = MainWindow()
-    qtbot.addWidget(win)
-    win.groups = [{"name": "g", "items": ["A", "A", "B"], "drawn_items": []}]
-    win.current_group_index = 0
-    win.updateWheelFromCurrentGroup()
-    return win
 
 
 def finish_on(window, index):

@@ -9,6 +9,7 @@ import math
 
 # 旧实现的启发式参数（main.py renderCache），保持观感零变化
 WHEEL_DIAMETER_RATIO = 0.88  # 转盘直径 / min(w, h)
+WHEEL_RADIUS_RATIO = WHEEL_DIAMETER_RATIO / 2.0  # 转盘半径 / min(w, h)
 TEXT_RADIUS_RATIO = 0.62  # 文字距中心的半径 / 转盘半径
 FONT_START_RATIO = 0.18  # 自动字号起点 = 半径 * 0.18
 FONT_MIN_PX_BY_RADIUS = 10  # 自动字号下限（半径比例换算前的绝对像素）

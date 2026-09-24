@@ -28,6 +28,45 @@ def real_wheel_data():
     return root / "wheel_data.json"
 
 
+@pytest.fixture
+def build_main_window(qtbot, monkeypatch, tmp_path):
+    """构造 MainWindow 的工厂，数据文件隔离到临时目录（不碰用户真实数据）。
+
+    Args:
+        groups: 直接赋给 window.groups 的分组 dict 列表；None 表示保持
+            loadData 装入的状态。
+        index: current_group_index。
+        refresh: 是否调用 updateWheelFromCurrentGroup 把数据推到控件上。
+
+    qtbot.addWidget 不是可选项：不注册的窗口在用例结束后不关闭，500ms
+    保存去抖定时器会跨测试存活，撞上别处对 storage.save_state 的
+    monkeypatch 并把它的调用计数算错（实测令 test_save_debounce 由 1 变 2）。
+    """
+    from luckywheel.ui.main_window import MainWindow
+
+    def build(groups=None, index=0, refresh=False):
+        monkeypatch.setattr(
+            "luckywheel.core.paths.resolve_data_path",
+            lambda: (tmp_path / "wheel_data.json", None),
+        )
+        win = MainWindow()
+        qtbot.addWidget(win)
+        if groups is not None:
+            win.groups = groups
+            win.current_group_index = index
+            if refresh:
+                win.updateWheelFromCurrentGroup()
+        return win
+
+    return build
+
+
+@pytest.fixture
+def window(build_main_window):
+    """不带示例数据的 MainWindow（groups 由 loadData 从隔离后的文件装入）。"""
+    return build_main_window()
+
+
 @pytest.fixture(autouse=True)
 def no_modal_dialogs(monkeypatch, request):
     """把延后弹出的模态框换成记录器，返回调用列表。

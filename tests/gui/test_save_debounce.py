@@ -13,18 +13,9 @@ from luckywheel.core import storage
 
 
 @pytest.fixture
-def window(qtbot, monkeypatch, tmp_path):
+def window(build_main_window):
     """MainWindow 实例，数据文件隔离到临时目录（不碰用户真实数据）。"""
-    from luckywheel.ui.main_window import MainWindow
-
-    monkeypatch.setattr(
-        "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)
-    )
-    win = MainWindow()
-    qtbot.addWidget(win)
-    win.groups = [{"name": "g", "items": ["A", "B"], "drawn_items": []}]
-    win.current_group_index = 0
-    return win
+    return build_main_window(groups=[{"name": "g", "items": ["A", "B"], "drawn_items": []}])
 
 
 class TestDebouncedSave:

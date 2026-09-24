@@ -34,7 +34,3 @@ class SaveScheduler:
         """取消待发定时器并立即执行保存。"""
         self._timer.stop()
         self._callback()
-
-    def pending(self):
-        """是否有尚未落盘的变更。"""
-        return self._timer.isActive()

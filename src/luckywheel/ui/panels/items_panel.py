@@ -146,7 +146,7 @@ class ItemsPanel(Panel):
 
     def onItemsReordered(self):
         """拖拽排序后同步数据"""
-        if self.window._updating_list:
+        if self.window.updating_list:
             return
         items = [self.list_widget.item(i).text() for i in range(self.list_widget.count())]
         if items != self.group["items"]:

@@ -68,12 +68,21 @@ class WheelWidget(QWidget):
         self.setMinimumSize(200, 200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-    def setFontSize(self, size):
-        """设置转盘文字固定大小，0 为自动"""
-        self.font_size = size
+    def _invalidate_cache(self):
+        """让离屏缓存失效，由下一次 paintEvent 按当前状态重建。
+
+        六个 setter 与 resize 去抖到点都走这里。三项必须一起清：paintEvent
+        的 guard 同时比对 pixmap、逻辑边长与 dpr，只清其中一两项会让旧图
+        被判为"仍然匹配"而继续使用。
+        """
         self.cached_pixmap = None
         self.cached_size = None
         self.cached_dpr = None
+
+    def setFontSize(self, size):
+        """设置转盘文字固定大小，0 为自动"""
+        self.font_size = size
+        self._invalidate_cache()
         self._font_size_cache.clear()
         self.update()
 
@@ -172,9 +181,7 @@ class WheelWidget(QWidget):
 
         # ---------- 绘制文字（完全沿用原版逻辑，仅将全局坐标改为未旋转下的固定位置） ----------
         text_radius = radius * layout.TEXT_RADIUS_RATIO
-        num = len(self.items)
-        sector_span = 360.0 / num
-        # 宽高约束与文本无关，整批文字共用
+        # 宽高约束与文本无关，整批文字共用（num/sector_span 已在上方算过）
         max_w, max_h = layout.text_box(radius, sector_span)
 
         measure = self._measure(painter)
@@ -248,24 +255,18 @@ class WheelWidget(QWidget):
         if not colors:
             return
         self.sector_colors = list(colors)
-        self.cached_pixmap = None
-        self.cached_size = None
-        self.cached_dpr = None
+        self._invalidate_cache()
         self.update()
 
     def setShadowEnabled(self, enabled):
         self.shadow_enabled = enabled
-        self.cached_pixmap = None
-        self.cached_size = None
-        self.cached_dpr = None
+        self._invalidate_cache()
         self.update()
 
     def setFontFamily(self, family):
         """设置转盘文字的字体家族"""
         self.font_family = family
-        self.cached_pixmap = None
-        self.cached_size = None
-        self.cached_dpr = None
+        self._invalidate_cache()
         self._font_size_cache.clear()  # 不同字体的度量不同，缓存不得沿用
         self.update()
 
@@ -276,9 +277,7 @@ class WheelWidget(QWidget):
         # 注意：此处不再把 rotation 归零。旋转角是绘制相位，与项目列表
         # 无关；换列表时保留当前角度可避免视觉上的跳变，也让 setItems
         # 不会被误用作"重置转盘"的入口。
-        self.cached_pixmap = None
-        self.cached_size = None
-        self.cached_dpr = None
+        self._invalidate_cache()
         self._font_size_cache.clear()
         self.update()
 
@@ -304,17 +303,14 @@ class WheelWidget(QWidget):
     def _onResizeSettled(self):
         """去抖到点：失效缓存，由下一次 paintEvent 按新边长重建。"""
         if self.cached_pixmap is not None:
-            self.cached_pixmap = None
-            self.cached_size = None
-            self.cached_dpr = None
+            self._invalidate_cache()
             self.update()
         self._pending_side = None
 
-    def startSpin(self, initial_velocity=None):
+    def startSpin(self):
         """开始旋转：先由 core.plan_spin 定好结果，再把动画演到终点。
 
-        公平性由 plan_spin 的 winner 抽取保证，与浮点物理脱钩；
-        initial_velocity 仅为兼容旧签名保留，不再影响结果。
+        公平性由 plan_spin 的 winner 抽取保证，与浮点物理脱钩。
         """
         if self.spinning or len(self.items) == 0:
             return
@@ -403,7 +399,9 @@ class WheelWidget(QWidget):
         painter.restore()
 
         # ---------- 绘制固定的中心装饰和指针 ----------
-        radius = side * 0.44  # 简便计算，也可用 wheel_diameter/2
+        # 半径与 renderCache 用同一个量：改 layout.WHEEL_DIAMETER_RATIO 时
+        # 两者一起动，不会出现缓存图与指针脱钩
+        radius = side * layout.WHEEL_RADIUS_RATIO
         # 中心圆
         painter.save()
         painter.translate(center)
@@ -426,8 +424,7 @@ class WheelWidget(QWidget):
 
         # 指针
         painter.save()
-        wheel_radius = min(self.width(), self.height()) * 0.44
-        pointer_tip = QPointF(center.x(), center.y() - wheel_radius + 5)
+        pointer_tip = QPointF(center.x(), center.y() - radius + 5)
         pointer_size = 20
         pointer = QPolygonF(
             [

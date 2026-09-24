@@ -63,18 +63,6 @@ CONTRACT_METHODS = (
 )
 
 
-@pytest.fixture
-def window(qtbot, monkeypatch, tmp_path):
-    from luckywheel.ui.main_window import MainWindow
-
-    monkeypatch.setattr(
-        "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)
-    )
-    win = MainWindow()
-    qtbot.addWidget(win)
-    return win
-
-
 def set_theme(window, name):
     window.theme = name
     window._applyTheme()

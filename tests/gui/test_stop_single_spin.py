@@ -17,18 +17,10 @@ import pytest
 
 
 @pytest.fixture
-def window(qtbot, monkeypatch, tmp_path):
-    from luckywheel.ui.main_window import MainWindow
-
-    monkeypatch.setattr(
-        "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)
+def window(build_main_window):
+    return build_main_window(
+        groups=[{"name": "g", "items": ["A", "B", "C"], "drawn_items": []}], refresh=True
     )
-    win = MainWindow()
-    qtbot.addWidget(win)
-    win.groups = [{"name": "g", "items": ["A", "B", "C"], "drawn_items": []}]
-    win.current_group_index = 0
-    win.updateWheelFromCurrentGroup()
-    return win
 
 
 def row_containing(widget):

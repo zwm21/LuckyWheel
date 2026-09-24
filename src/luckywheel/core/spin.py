@@ -69,14 +69,6 @@ class SpinPlan:
         angle = self.start_angle + self.total_rotation * eased_fraction(progress)
         return angle
 
-    def velocity_at(self, t_seconds):
-        """t 秒时的角速度（度/秒）。收尾速度约 10.5°/s（旧版阈值 5°/s，
-        视觉上都已很慢；本值由 TAIL_RATIO 决定，与盘面大小无关）。"""
-        K = -math.log(TAIL_RATIO)
-        x = min(max(t_seconds / self.duration if self.duration > 0 else 1.0, 0.0), 1.0)
-        v0 = self.total_rotation * K / ((1.0 - TAIL_RATIO) * self.duration)
-        return v0 * math.exp(-K * x)
-
 
 def plan_spin(count, start_angle, rng, min_turns=MIN_TURNS, extra_turns=EXTRA_TURNS_MAX):
     """为 count 个扇区的转盘生成一次旋转计划。

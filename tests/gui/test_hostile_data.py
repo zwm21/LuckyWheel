@@ -38,22 +38,18 @@ HOSTILE = {
 
 
 @pytest.fixture
-def make_window(qtbot, monkeypatch, tmp_path):
+def make_window(build_main_window, tmp_path):
     """按给定文件内容构造 MainWindow；返回 (window, data_path)。
 
-    必须 qtbot.addWidget：否则测试结束后窗口不关闭，500ms 去抖定时器继续
-    存活并跨越测试边界，会在下一个用例 monkeypatch storage.save_state 时
-    被算进它的调用计数（实测让 test_save_debounce 由 1 变 2）。
+    复用 conftest 的 build_main_window：它把数据路径指向同一个临时文件，
+    因此先写内容再构造即可，窗口同样交给 qtbot 管理（否则 500ms 去抖
+    定时器会跨测试存活，撞上别处对 storage.save_state 的 monkeypatch）。
     """
-    from luckywheel.ui.main_window import MainWindow
 
     def build(content):
         path = tmp_path / "wheel_data.json"
         path.write_text(content, encoding="utf-8")
-        monkeypatch.setattr("luckywheel.core.paths.resolve_data_path", lambda: (path, None))
-        win = MainWindow()
-        qtbot.addWidget(win)
-        return win, path
+        return build_main_window(), path
 
     return build
 

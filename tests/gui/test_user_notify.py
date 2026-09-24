@@ -9,21 +9,7 @@ tests/conftest.py 的 no_modal_dialogs 已把 show_info 换成记录器，
 本文件断言的就是那个记录器收到的内容。
 """
 
-import pytest
-
 from luckywheel.core import storage
-
-
-@pytest.fixture
-def window(qtbot, monkeypatch, tmp_path):
-    from luckywheel.ui.main_window import MainWindow
-
-    monkeypatch.setattr(
-        "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)
-    )
-    win = MainWindow()
-    qtbot.addWidget(win)
-    return win
 
 
 def drain_events(qtbot):

@@ -50,7 +50,12 @@ class MainWindow(QMainWindow):
         self.groups = []
         self.current_group_index = 0
         self._updating_list = False
-        self.shadow_enabled = True  # 给一个默认值，loadData 会覆盖
+        # 以下占位值不是冗余：loadData 在 __init__ 尾部才跑，而它的第一个
+        # 动作就可能是 saveData（首启动时数据文件不存在，见 loadData 末尾），
+        # 该路径经去抖定时器直达 _write_state，读取的正是这些字段。缺失任何
+        # 一个就是 AttributeError；loadData 若中途异常返回，对象也仍处于可
+        # 序列化的完整状态，不会把半初始化窗口留给后续保存。
+        self.shadow_enabled = True
         self.window_geometry = None
         self.splitter_sizes = None
         self.user_list_height = 200
@@ -204,6 +209,17 @@ class MainWindow(QMainWindow):
         """列表控件已建成时存实际显示高度（所见即所得），否则存上次的配置值。"""
         widget = getattr(self, widget_name, None)
         return fallback if widget is None else widget.height()
+
+    @property
+    def updating_list(self):
+        """列表是否正处于"程序刷新中"，供面板只读（如 ItemsPanel 据此
+        跳过回写）。
+
+        addItems 同样会触发 itemChanged/reordered 信号，不区分"用户在拖"
+        与"刷新刚写完"就会把一次刷新当成用户操作再写回数据。这个标志由
+        updateWheelFromCurrentGroup 成对置位，面板不得改写。
+        """
+        return self._updating_list
 
     def _write_state(self):
         """把当前状态序列化落盘（去抖到点或 flushSave 时调用）。"""
@@ -410,7 +426,7 @@ class MainWindow(QMainWindow):
 
         self.updateDrawnList()
         self.updateExtractButtonState()
-        self.spin_panel._updateBatchButtonState()
+        self.spin_panel.updateBatchButtonState()
 
     def closeEvent(self, event):
         geo = self.geometry()

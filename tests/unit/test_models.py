@@ -1,4 +1,9 @@
-"""core.models：AppState/Group 序列化与收敛规则（零 Qt 依赖）。"""
+"""core.models：AppState/Group 序列化与收敛规则（零 Qt 依赖）。
+
+收敛规则的断言一律走生产路径 storage.parse_state：models 曾有一套自己的
+AppState.from_dict，与 storage.parse_state 功能重复，测试验的是前者，于是
+两套解析器各自漂移而无人发现。删掉 from_dict 后，测试直接钉生产入口。
+"""
 
 import pytest
 
@@ -88,6 +93,7 @@ class TestNumericUpperBounds:
 
 class TestGroup:
     def test_roundtrip(self):
+        """UI 层的 groups 是 dict 形态，落盘时经 from_dict 转回 Group。"""
         g = Group(name="组", items=["a", "b"], drawn=["c"])
         assert Group.from_dict(g.to_dict()) == g
 
@@ -102,7 +108,8 @@ class TestAppState:
 
     def test_roundtrip_default(self):
         state = default_state()
-        assert AppState.from_dict(state.to_dict()) == state
+        restored, _ = storage.parse_state(state.to_dict())
+        assert restored == state
 
     def test_roundtrip_full(self):
         state = AppState(
@@ -120,62 +127,59 @@ class TestAppState:
             batch_spin_count=5,
             theme="dark",
         )
-        restored = AppState.from_dict(state.to_dict())
+        restored, _ = storage.parse_state(state.to_dict())
         assert restored == state
 
     def test_legacy_font_family_split(self):
         """旧格式 font_family 同时喂给 ui 与转盘字体。"""
-        state = AppState.from_dict({"font_family": "旧字体", "groups": []})
+        state = clamp_with(font_family="旧字体")
         assert state.ui_font_family == "旧字体"
         assert state.wheel_font_family == "旧字体"
 
     def test_clamp_current_group_out_of_range(self):
-        state = AppState.from_dict({"groups": [{"name": "g"}], "current_group": 7})
-        assert state.current_group == 0
+        assert clamp_with(current_group=7).current_group == 0
+        assert clamp_with(current_group=-1).current_group == 0
+
+    def test_clamp_current_group_bool(self):
+        """bool 是 int 子类，混过校验会被原样写回 JSON 变成 true。"""
+        assert clamp_with(current_group=True).current_group == 0
 
     def test_clamp_bad_theme(self):
-        assert AppState.from_dict({"theme": "彩虹"}).theme == "light"
+        assert clamp_with(theme="彩虹").theme == "light"
 
     def test_clamp_bad_font_size(self):
-        assert AppState.from_dict({"ui_font_size": "九号"}).ui_font_size == 9
-        assert AppState.from_dict({"wheel_font_size": -3}).wheel_font_size == 0
+        assert clamp_with(ui_font_size="九号").ui_font_size == 9
+        assert clamp_with(wheel_font_size=-3).wheel_font_size == 0
 
     def test_clamp_bad_window_geometry(self):
         """几何坏值收敛为 None，而不是带进 Qt 的 setGeometry。"""
-        assert AppState.from_dict({"window_geometry": [1, 2]}).window_geometry is None
-        assert AppState.from_dict({"window_geometry": "0,0,100,100"}).window_geometry is None
-        assert AppState.from_dict({"window_geometry": [1, 2, 3, True]}).window_geometry is None
-        good = AppState.from_dict({"window_geometry": [-8, 40, 1297, 721]})
+        assert clamp_with(window_geometry=[1, 2]).window_geometry is None
+        assert clamp_with(window_geometry="0,0,100,100").window_geometry is None
+        assert clamp_with(window_geometry=[1, 2, 3, True]).window_geometry is None
+        good = clamp_with(window_geometry=[-8, 40, 1297, 721])
         assert good.window_geometry == [-8, 40, 1297, 721]
 
     def test_clamp_bad_splitter_sizes(self):
-        assert AppState.from_dict({"splitter_sizes": [264]}).splitter_sizes is None
-        assert AppState.from_dict({"splitter_sizes": ["a", "b"]}).splitter_sizes is None
-        good = AppState.from_dict({"splitter_sizes": [264, 1011]})
+        assert clamp_with(splitter_sizes=[264]).splitter_sizes is None
+        assert clamp_with(splitter_sizes=["a", "b"]).splitter_sizes is None
+        good = clamp_with(splitter_sizes=[264, 1011])
         assert good.splitter_sizes == [264, 1011]
 
     def test_clamp_bad_heights(self):
-        assert AppState.from_dict({"list_height": -5}).list_height == 200
-        assert AppState.from_dict({"drawn_list_height": None}).drawn_list_height == 120
+        assert clamp_with(list_height=-5).list_height == 200
+        assert clamp_with(drawn_list_height=None).drawn_list_height == 120
 
     def test_clamp_bad_font_family(self):
         """字体家族会直接传给 QFont()，非字符串必须收敛。"""
-        assert AppState.from_dict({"ui_font_family": 42}).ui_font_family == "Microsoft YaHei"
-        assert (
-            AppState.from_dict({"wheel_font_family": ["a"]}).wheel_font_family == "Microsoft YaHei"
-        )
+        assert clamp_with(ui_font_family=42).ui_font_family == "Microsoft YaHei"
+        assert clamp_with(wheel_font_family=["a"]).wheel_font_family == "Microsoft YaHei"
 
     def test_default_state_has_one_group(self):
         state = default_state()
         assert len(state.groups) == 1
         assert state.groups[0].items == ["选项1", "选项2", "选项3"]
 
-    def test_current_group_object(self):
-        state = default_state()
-        assert state.current_group_object is state.groups[0]
-        assert AppState(groups=()).current_group_object is None
-
 
 @pytest.mark.parametrize("bad", [True, "x", 3.5])
 def test_clamp_bad_batch_count(bad):
-    assert AppState.from_dict({"batch_spin_count": bad}).batch_spin_count == 3
+    assert clamp_with(batch_spin_count=bad).batch_spin_count == 3

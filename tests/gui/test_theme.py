@@ -7,23 +7,10 @@
    实际样式必须与旧实现的硬编码值逐一相等（观感零变化）。
 """
 
-import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 from luckywheel.ui import theme as ui_theme
-
-
-@pytest.fixture
-def window(qtbot, monkeypatch, tmp_path):
-    from luckywheel.ui.main_window import MainWindow
-
-    monkeypatch.setattr(
-        "luckywheel.core.paths.resolve_data_path", lambda: (tmp_path / "wheel_data.json", None)
-    )
-    win = MainWindow()
-    qtbot.addWidget(win)
-    return win
 
 
 def set_theme(window, name):

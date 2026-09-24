@@ -129,11 +129,12 @@
 
 1. `wheel.py` 抽 `_invalidate_cache()`，六处失效点改为调用（Q1）。
 2. `layout.py` 导出转盘半径常量，`wheel.py` 的 0.44 与测试里的硬编码几何改为引用（Q2、Q3）。
-3. 删除死代码：`AppState.from_dict`、`Group.from_dict`（连同 `test_models.py` 中只测它的用例）、
-   `current_group_object`、`velocity_at`、`save_scheduler.pending()`、`startSpin` 的 `initial_velocity`
-   形参（Q4）。删除前逐个确认无生产调用方；`test_models.py` 中针对 `from_dict` 的断言改写成
-   走 `parse_state`，保证安全网不减弱反而更贴生产路径。
-4. `_updateBatchButtonState` 改为公开方法或补契约注释；`_updating_list` 提供只读访问器（Q5）。
+3. 删除死代码：`AppState.from_dict`、`current_group_object`、`velocity_at`、`save_scheduler.pending()`、
+   `startSpin` 的 `initial_velocity` 形参（Q4）。删除前逐个确认无生产调用方；`test_models.py` 中针对
+   `AppState.from_dict` 的断言改写成走 `parse_state`，保证安全网不减弱反而更贴生产路径。
+   注意 `Group.from_dict` 一度也在删除清单里，实际是生产路径的一环（`main_window._write_state`
+   把 UI 持有的 dict 形态 groups 转回 `Group`），已恢复并补注释说明这个桥接作用。
+4. `_updateBatchButtonState` 改为公开方法；`_updating_list` 提供只读访问器（Q5）。
 5. 7 份重复 `window` fixture 下沉 `tests/conftest.py`（Q6）。
 6. 修正 `test_fairness.py` 的过期 main.py 行号引用（R10）。
 7. `main_window.py:47-59` 的兜底默认值补注释说明为何保留（Q9）。
@@ -180,3 +181,30 @@ README 补全项目结构与字体顺序；新增本文档；`tests/unit/test_st
 `verify_gui` 双入口各 12 个 `[ok]` 且 exit 0（冒烟脚本自身已含停止按钮检查，11→12 与本次改动无关）。
 字体接线实测生效：`find_embedded_font` 返回 `assets/fonts/HYWenHei-65W.ttf`，
 `loadEmbeddedFont` 返回族名 `HYWenHei`。
+
+### 批次 B：健壮性与安全加固（已完成）
+
+改动：`core/storage.py` 增加 `MAX_DATA_FILE_BYTES`/`MAX_ENTRIES_PER_GROUP`/`MAX_TEXT_LENGTH`
+三道上限与 `_is_int`，`load_state` 读前查 `st_size`、捕获 `RecursionError`，`current_group` 排除
+bool，`save_state` 备份改 `shutil.copy2`；`core/models.py` 增加字号/高度/批量次数/坐标的绝对
+上界并在 `clamp` 中同时收上下界；`ui/main_window.py` 抽出 `_notifyWarnings` 把多条告警合并为
+一次汇总提示；新增 `tests/gui/test_hostile_data.py`（GUI 级 hostile 回归）与两个 unit 测试类。
+
+验证：`pytest` 397 passed、`ruff check` 与 `format --check` 干净、`verify_gui` 双入口各 12 个
+`[ok]` 且 exit 0。`test_clamped_values_are_qt_safe` 直接断言收敛后每个整数都落在 C int 安全
+范围；`test_backup_never_removes_original` 让 `os.replace` 抛错后确认原文件仍在原地。
+
+### 批次 C：代码质量与死代码清理（已完成）
+
+改动：`ui/wheel.py` 抽 `_invalidate_cache()` 并让六处缓存失效点改用它，`paintEvent` 改用
+`layout.WHEEL_RADIUS_RATIO` 并复用已算出的 `radius`，`startSpin` 去掉 `initial_velocity` 死
+参数；`core/layout.py` 导出 `WHEEL_RADIUS_RATIO`；删 `AppState.from_dict`、`current_group_object`、
+`spin.SpinPlan.velocity_at`、`save_scheduler.pending()`（`Group.from_dict` 经核查是生产路径的
+桥接，保留并补注释）；`spin_panel._updateBatchButtonState` 改名公开、`MainWindow.updating_list`
+只读 property 取代面板对 `_updating_list` 的直接读取；7 份重复 `window` fixture 下沉
+`tests/conftest.py` 的 `build_main_window`/`window`；`test_models.py` 全面改走
+`storage.parse_state` 生产路径；`test_fairness.py` 去掉对已不存在的 main.py 行号的引用。
+
+验证：`pytest` 397 passed（与批次 B 同数，纯清理无新增用例）、`ruff check` 与
+`format --check` 干净、`verify_gui` 双入口各 12 个 `[ok]` 且 exit 0。`velocity_at` 删除后，
+"收尾速度约为初速度的 TAIL_RATIO" 这条性质改在 `eased_fraction` 上以斜率比断言，安全网未减弱。

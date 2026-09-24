@@ -127,8 +127,9 @@ class SpinPanel(Panel):
         has_result = self.window.last_result_index is not None
         self.btn_extract.setEnabled(bool(has_result and items))
 
-    def _updateBatchButtonState(self):
-        """控制批量抽取按钮的可用状态"""
+    def updateBatchButtonState(self):
+        """控制批量抽取按钮的可用状态（与 updateExtractButtonState 同级：
+        两者都由 MainWindow.updateWheelFromCurrentGroup 一并调用）。"""
         if not self.groups or self.window.current_group_index < 0:
             self.btn_batch_spin.setEnabled(False)
             return
